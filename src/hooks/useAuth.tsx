@@ -104,10 +104,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const submitMatchResult = useCallback(async (kills: number, deaths: number, isWin: boolean) => {
     if (!user) return;
-    await updatePlayerStats(user.id, kills, deaths, isWin);
-    setPenaltyStorage(user.id, false);
-    setHasPendingMatchmakingPenalty(false);
-    await loadStats(user.id, user.name);
+    try {
+      await updatePlayerStats(user.id, kills, deaths, isWin);
+      await loadStats(user.id, user.name);
+    } finally {
+      // Always clear queued matchmaking KD penalty after a match result is submitted.
+      setPenaltyStorage(user.id, false);
+      setHasPendingMatchmakingPenalty(false);
+    }
   }, [user, loadStats, setPenaltyStorage]);
 
   const updateName = useCallback(async (newName: string) => {

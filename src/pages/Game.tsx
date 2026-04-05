@@ -71,7 +71,7 @@ function ptInObsDynamic(x: number, y: number, obstacles: Obstacle[]) {
 const Game = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, submitMatchResult } = useAuth();
+  const { user, stats, hasPendingMatchmakingPenalty, submitMatchResult } = useAuth();
   const isMatchmakingMode = searchParams.get('mode') === 'matchmaking';
   const [screen, setScreen] = useState<Screen>('lobby');
   const [gameMode, setGameMode] = useState<GameMode>('ffa');
@@ -1001,25 +1001,38 @@ const Game = () => {
 
     const shuffledNames = [...MATCHMAKING_BOT_NAMES].sort(() => Math.random() - 0.5);
     const playerName = user?.name || settings.username || 'Player';
+    const rawKD = stats ? (stats.total_deaths === 0 ? stats.total_kills : stats.total_kills / stats.total_deaths) : 0;
+    const effectiveKD = Math.max(rawKD - (hasPendingMatchmakingPenalty && rawKD > 0.1 ? 0.1 : 0), 0);
     const teamBotConfigs: Array<{ team: 'green' | 'red'; tier: BotTier; name: string }> = [];
+    const randomTeamTier = (): BotTier => ([1, 2, 3, 4][Math.floor(Math.random() * 4)] as BotTier);
+    const getOpponentTierPool = (kd: number): BotTier[] => {
+      if (kd >= 4) return [4];
+      if (kd >= 3) return [3, 4];
+      if (kd >= 2) return [3, 4, 2];
+      if (kd >= 1) return [2, 3];
+      if (kd >= 0.5) return [1, 2];
+      return [1];
+    };
+    const opponentTierPool = getOpponentTierPool(effectiveKD);
+    const randomOpponentTier = (): BotTier => opponentTierPool[Math.floor(Math.random() * opponentTierPool.length)];
 
     if (parsedTeamSize === 'duo') {
       // User (green) + 1 Bot (green), vs 2 Bots (red)
       teamBotConfigs.push(
-        { team: 'green', tier: 3, name: shuffledNames[0] }, // User's teammate
-        { team: 'red', tier: 3, name: shuffledNames[1] },
-        { team: 'red', tier: 2, name: shuffledNames[2] }
+        { team: 'green', tier: randomTeamTier(), name: shuffledNames[0] }, // User's teammate
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[1] },
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[2] }
       );
     } else {
       // Squad: User (green) + 3 Bots (green) vs 4 Bots (red)
       teamBotConfigs.push(
-        { team: 'green', tier: 2, name: shuffledNames[0] },
-        { team: 'green', tier: 3, name: shuffledNames[1] },
-        { team: 'green', tier: 1, name: shuffledNames[2] },
-        { team: 'red', tier: 4 as BotTier, name: shuffledNames[3] },
-        { team: 'red', tier: 3, name: shuffledNames[4] },
-        { team: 'red', tier: 2, name: shuffledNames[5] },
-        { team: 'red', tier: 1, name: shuffledNames[6] }
+        { team: 'green', tier: randomTeamTier(), name: shuffledNames[0] },
+        { team: 'green', tier: randomTeamTier(), name: shuffledNames[1] },
+        { team: 'green', tier: randomTeamTier(), name: shuffledNames[2] },
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[3] },
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[4] },
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[5] },
+        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[6] }
       );
     }
 
@@ -1071,7 +1084,7 @@ const Game = () => {
     botsRef.current = botConfigs.map(bc => createBotState(bc.id, bc.tier));
     initGame(players, parsedGameMode, 'classic', botConfigs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMatchmakingMode]);
+  }, [isMatchmakingMode, searchParams, user?.name, settings.username, stats, hasPendingMatchmakingPenalty, initGame]);
 
   // ─── UPDATE ───
 
