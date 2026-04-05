@@ -1,0 +1,136 @@
+import { createClient } from '@insforge/sdk';
+
+export const insforge = createClient({
+  baseUrl: 'https://n73p9rv8.ap-southeast.insforge.app',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC0xMjM0LTU2NzgtOTBhYi1jZGVmMTIzNDU2NzgiLCJlbWFpbCI6ImFub25AaW5zZm9yZ2UuY29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzODM0Njh9.tjc0aQ-n_zvDyXnC1r7XlvhRLFcZ275PJRcntBDppG0',
+});
+
+export type PlayerStats = {
+  id: string;
+  user_id: string;
+  username: string;
+  total_kills: number;
+  total_deaths: number;
+  level: number;
+  xp: number;
+  matches_played: number;
+  wins: number;
+  losses: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Compute KD ratio safely */
+export function computeKD(kills: number, deaths: number): string {
+  if (deaths === 0) return kills > 0 ? kills.toFixed(2) : '0.00';
+  return (kills / deaths).toFixed(2);
+}
+
+/** Compute level from XP (100 XP per level) */
+export function computeLevel(xp: number): number {
+  return Math.floor(xp / 100) + 1;
+}
+
+/** XP gained per match: kills * 10 + 5 per match */
+export function computeXPGain(kills: number): number {
+  return kills * 10 + 5;
+}
+
+/** Fetch or create player stats for authenticated user */
+export async function getOrCreatePlayerStats(userId: string, username: string): Promise<PlayerStats | null> {
+  // Try to fetch first
+  const { data: existing, error } = await insforge.database
+    .from('player_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .single<PlayerStats>();
+
+  if (error) {
+    console.error('Error fetching player stats:', error);
+  }
+
+  if (existing) return existing;
+
+  // Create if not exists
+  const newStats: Omit<PlayerStats, 'created_at' | 'updated_at'> = {
+    id: userId,
+    user_id: userId,
+    username,
+    total_kills: 0,
+    total_deaths: 0,
+    level: 1,
+    xp: 0,
+    matches_played: 0,
+    wins: 0,
+    losses: 0,
+  };
+
+  const { data: created, error: insertError } = await insforge.database
+    .from('player_stats')
+    .insert([newStats])
+    .select('*')
+    .single<PlayerStats>();
+
+  if (insertError) {
+    console.error('Error creating player stats:', insertError);
+  }
+
+  return created ?? null;
+}
+
+/** Update player stats after a match */
+export async function updatePlayerStats(userId: string, kills: number, deaths: number, isWin: boolean): Promise<void> {
+  const { data: current, error: fetchError } = await insforge.database
+    .from('player_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .single<PlayerStats>();
+
+  if (fetchError) {
+    console.error('Error fetching stats before update:', fetchError);
+  }
+
+  if (!current) return;
+
+  const newKills = current.total_kills + kills;
+  const newDeaths = current.total_deaths + deaths;
+  let newXP = current.xp + computeXPGain(kills);
+  if (isWin) newXP += 50; // Bonus XP for winning
+  const newLevel = computeLevel(newXP);
+  
+  const newWins = current.wins + (isWin ? 1 : 0);
+  const newLosses = current.losses + (isWin ? 0 : 1);
+
+  const { error: updateError } = await insforge.database
+    .from('player_stats')
+    .update({
+      total_kills: newKills,
+      total_deaths: newDeaths,
+      level: newLevel,
+      xp: newXP,
+      matches_played: current.matches_played + 1,
+      wins: newWins,
+      losses: newLosses,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    console.error('Failed to update stats in InsForge:', updateError);
+  }
+}
+
+/** Update player name */
+export async function updatePlayerName(userId: string, newName: string): Promise<void> {
+  const { error } = await insforge.database
+    .from('player_stats')
+    .update({
+      username: newName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Failed to update player name in InsForge:', error);
+  }
+}

@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 25% 6%;
+    --foreground: 150 40% 88%;
+    --card: 220 22% 10%;
+    --card-foreground: 150 40% 88%;
+    --popover: 220 22% 10%;
+    --popover-foreground: 150 40% 88%;
+    --primary: 150 100% 42%;
+    --primary-foreground: 220 25% 6%;
+    --secondary: 220 18% 16%;
+    --secondary-foreground: 150 40% 80%;
+    --muted: 220 15% 14%;
+    --muted-foreground: 220 10% 50%;
+    --accent: 35 100% 55%;
+    --accent-foreground: 220 25% 6%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 18% 20%;
+    --input: 220 18% 20%;
+    --ring: 150 100% 42%;
+    --radius: 0.5rem;
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 150 40% 88%;
+    --sidebar-primary: 150 100% 42%;
+    --sidebar-primary-foreground: 220 25% 6%;
+    --sidebar-accent: 220 18% 14%;
+    --sidebar-accent-foreground: 150 40% 80%;
+    --sidebar-border: 220 18% 20%;
+    --sidebar-ring: 150 100% 42%;
+  }
+
+  .dark {
+    --background: 220 25% 6%;
+    --foreground: 150 40% 88%;
+    --card: 220 22% 10%;
+    --card-foreground: 150 40% 88%;
+    --popover: 220 22% 10%;
+    --popover-foreground: 150 40% 88%;
+    --primary: 150 100% 42%;
+    --primary-foreground: 220 25% 6%;
+    --secondary: 220 18% 16%;
+    --secondary-foreground: 150 40% 80%;
+    --muted: 220 15% 14%;
+    --muted-foreground: 220 10% 50%;
+    --accent: 35 100% 55%;
+    --accent-foreground: 220 25% 6%;
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 18% 20%;
+    --input: 220 18% 20%;
+    --ring: 150 100% 42%;
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 150 40% 88%;
+    --sidebar-primary: 150 100% 42%;
+    --sidebar-primary-foreground: 220 25% 6%;
+    --sidebar-accent: 220 18% 14%;
+    --sidebar-accent-foreground: 150 40% 80%;
+    --sidebar-border: 220 18% 20%;
+    --sidebar-ring: 150 100% 42%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: 'Orbitron', sans-serif;
+  }
+}
