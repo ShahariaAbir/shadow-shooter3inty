@@ -240,6 +240,7 @@ export function updateBot(params: BotUpdateParams): BotAction {
 
     if (isTier4) {
       // T4: Most intelligent - constantly repositions, avoids obstacles, attacks relentlessly
+      const shouldForceCloseFight = distToPlayer > 180 && Math.random() < 0.35;
       if (hp < 25) {
         // Emergency retreat but keep firing
         const awayAngle = Math.atan2(botState.y - playerState.y, botState.x - playerState.x);
@@ -247,6 +248,9 @@ export function updateBot(params: BotUpdateParams): BotAction {
         bot.moveDir = checkObstacleAhead(retreatAngle, 50)
           ? retreatAngle + Math.PI / 2
           : retreatAngle;
+      } else if (shouldForceCloseFight) {
+        // Sometimes force an aggressive push to close range combat.
+        bot.moveDir = Math.atan2(playerState.y - botState.y, playerState.x - botState.x) + (Math.random() - 0.5) * 0.25;
       } else if (isSniper) {
         // Sniper T4: precise long range, always in optimal zone
         if (distToPlayer < 500) {
@@ -348,6 +352,22 @@ export function updateBot(params: BotUpdateParams): BotAction {
         const strafeAngle = Math.atan2(playerState.y - botState.y, playerState.x - botState.x);
         bot.moveDir = strafeAngle + (Math.PI / 2) * (Math.random() > 0.5 ? 1 : -1) + (Math.random() - 0.5) * 0.4;
       }
+    }
+  }
+
+  // Universal anti-sticking: all tiers try alternate routes when heading into obstacles.
+  if (checkObstacleAhead(bot.moveDir, 30)) {
+    const alternatives = [
+      bot.moveDir + Math.PI / 6,
+      bot.moveDir - Math.PI / 6,
+      bot.moveDir + Math.PI / 3,
+      bot.moveDir - Math.PI / 3,
+      bot.moveDir + (Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2),
+      bot.moveDir + Math.PI,
+    ];
+    const clearDir = alternatives.find((angle) => !checkObstacleAhead(angle, 30));
+    if (clearDir !== undefined) {
+      bot.moveDir = clearDir;
     }
   }
 
