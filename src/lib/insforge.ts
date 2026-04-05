@@ -31,9 +31,11 @@ export function computeLevel(xp: number): number {
   return Math.floor(xp / 100) + 1;
 }
 
-/** XP gained per match: kills * 10 + 5 per match */
-export function computeXPGain(kills: number): number {
-  return kills * 10 + 5;
+/** XP gained per match scales down as player level increases */
+export function computeXPGain(kills: number, level: number): number {
+  const baseXP = kills * 10 + 5;
+  const levelPenalty = Math.max(0.3, 1 - (level - 1) * 0.05);
+  return Math.max(1, Math.round(baseXP * levelPenalty));
 }
 
 /** Fetch or create player stats for authenticated user */
@@ -94,8 +96,10 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
 
   const newKills = current.total_kills + kills;
   const newDeaths = current.total_deaths + deaths;
-  let newXP = current.xp + computeXPGain(kills);
-  if (isWin) newXP += 50; // Bonus XP for winning
+  let newXP = current.xp + computeXPGain(kills, current.level);
+  if (isWin) {
+    newXP += computeXPGain(5, current.level); // Bonus XP for winning also scales by level
+  }
   const newLevel = computeLevel(newXP);
   
   const newWins = current.wins + (isWin ? 1 : 0);
