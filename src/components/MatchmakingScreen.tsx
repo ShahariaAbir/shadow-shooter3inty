@@ -21,17 +21,53 @@ interface MatchmakingScreenProps {
   onMatchFound: () => void;
 }
 
-// Generate natural-feeling delays — short bursts with occasional pauses
-function generateNaturalDelays(count: number): number[] {
+// Play a short "player joined" ping sound using the Web Audio API
+function playJoinSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+    // Main ping tone
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);          // A5
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08); // up to E6
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+
+    // Subtle second harmonic for richness
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1760, ctx.currentTime);
+    gain2.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.2);
+  } catch {
+    // Audio not available — silently skip
+  }
+}
+
+// Generate random delays between 1000ms and 3000ms for each player,
+// accumulated so they join one after another.
+function generateRandomDelays(count: number): number[] {
   const delays: number[] = [];
   let elapsed = 0;
 
   for (let i = 0; i < count; i++) {
-    // Base wait: 500–1400ms, with occasional longer "searching" pauses
-    const isLongPause = Math.random() < 0.25; // 25% chance of a longer gap
-    const wait = isLongPause
-      ? 1200 + Math.random() * 900   // 1200–2100ms
-      : 500 + Math.random() * 900;   // 500–1400ms
+    // Random wait: 1000–3000ms (1–3 seconds)
+    const wait = 1000 + Math.random() * 2000;
     elapsed += wait;
     delays.push(elapsed);
   }
@@ -56,14 +92,15 @@ export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenPro
     const targetCount = 4; // 1 (you) + 3 opponents
     const opponents = shuffled.slice(0, targetCount - 1);
 
-    // Generate natural delays for each opponent joining
-    const delays = generateNaturalDelays(opponents.length);
+    // Generate random 1–3 second delays for each opponent joining
+    const delays = generateRandomDelays(opponents.length);
 
     const addPlayerTimeouts: ReturnType<typeof setTimeout>[] = [];
     opponents.forEach((name, i) => {
       const t = setTimeout(() => {
         setMatchedNames(prev => [...prev, name]);
         setPlayersFound(prev => prev + 1);
+        playJoinSound();
       }, delays[i]);
       addPlayerTimeouts.push(t);
     });
