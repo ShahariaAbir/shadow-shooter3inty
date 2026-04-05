@@ -3,14 +3,40 @@ import { Loader2, Users } from 'lucide-react';
 
 // List of bot usernames that appear in matchmaking
 export const MATCHMAKING_BOT_NAMES = [
+  // Original 20
   'ShadowWolf', 'NightHawk', 'PhantomX', 'VenomStrike', 'BladeRunner',
   'IronFist', 'DarkRaven', 'StormBreaker', 'CobaltGhost', 'NeonAssassin',
   'SilentKiller', 'RedViper', 'CrimsonBlaze', 'SteelPhantom', 'DarkMatter',
   'VoidWalker', 'GhostReaper', 'ShadowByte', 'NightBane', 'IceBreaker',
+  // New 30 names
+  'QuantumShade', 'FrostReaper', 'ThunderClad', 'AcidRain', 'NullVoid',
+  'BlazeHunter', 'NebulaStrike', 'ZeroKelvin', 'ToxicFlare', 'PixelKnight',
+  'RogueCircuit', 'AlphaSniper', 'ObsidianBolt', 'NightCrawlr', 'HexBreaker',
+  'InfernoWrath', 'GlitchKing', 'SpecterX', 'CorvusSteel', 'PolarEdge',
+  'LunarWarden', 'SolarDecay', 'CipherGhost', 'WraithByte', 'MoltenCore',
+  'SerpentPact', 'EmberFang', 'OmegaDrift', 'ShardBane', 'AbyssalCrow',
 ];
 
 interface MatchmakingScreenProps {
   onMatchFound: () => void;
+}
+
+// Generate natural-feeling delays — short bursts with occasional pauses
+function generateNaturalDelays(count: number): number[] {
+  const delays: number[] = [];
+  let elapsed = 0;
+
+  for (let i = 0; i < count; i++) {
+    // Base wait: 500–1400ms, with occasional longer "searching" pauses
+    const isLongPause = Math.random() < 0.25; // 25% chance of a longer gap
+    const wait = isLongPause
+      ? 1200 + Math.random() * 900   // 1200–2100ms
+      : 500 + Math.random() * 900;   // 500–1400ms
+    elapsed += wait;
+    delays.push(elapsed);
+  }
+
+  return delays;
 }
 
 export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenProps) {
@@ -22,28 +48,33 @@ export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenPro
   useEffect(() => {
     // Animate dots
     const dotInterval = setInterval(() => {
-      setDots(d => d.length >= 3 ? '' : d + '.');
+      setDots(d => (d.length >= 3 ? '' : d + '.'));
     }, 400);
 
-    // Simulate finding players (bots) over 3-5 seconds
+    // Pick 3 random opponents from the pool
     const shuffled = [...MATCHMAKING_BOT_NAMES].sort(() => Math.random() - 0.5);
-    const targetCount = 4; // We'll "find" 3 opponents (t1, t2, t3, t4 bots)
+    const targetCount = 4; // 1 (you) + 3 opponents
+    const opponents = shuffled.slice(0, targetCount - 1);
+
+    // Generate natural delays for each opponent joining
+    const delays = generateNaturalDelays(opponents.length);
 
     const addPlayerTimeouts: ReturnType<typeof setTimeout>[] = [];
-    for (let i = 0; i < targetCount - 1; i++) {
-      const delay = 600 + i * 700 + Math.random() * 400;
+    opponents.forEach((name, i) => {
       const t = setTimeout(() => {
-        setMatchedNames(prev => [...prev, shuffled[i]]);
+        setMatchedNames(prev => [...prev, name]);
         setPlayersFound(prev => prev + 1);
-      }, delay);
+      }, delays[i]);
       addPlayerTimeouts.push(t);
-    }
+    });
 
-    // Match found after all "players" join
+    // Match found 800–1200ms after last player joins
+    const lastDelay = delays[delays.length - 1];
+    const finalPause = 800 + Math.random() * 400;
     const matchTimeout = setTimeout(() => {
       setPhase('found');
       setTimeout(() => onMatchFound(), 1000);
-    }, 600 + (targetCount - 1) * 700 + 800);
+    }, lastDelay + finalPause);
 
     return () => {
       clearInterval(dotInterval);
