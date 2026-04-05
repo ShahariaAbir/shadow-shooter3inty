@@ -8,7 +8,7 @@ import MatchmakingScreen from '@/components/MatchmakingScreen';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, stats, loading, signInWithGoogle, signOut, updateName } = useAuth();
+  const { user, stats, hasPendingMatchmakingPenalty, loading, signInWithGoogle, signOut, updateName, refreshStats, applyMatchmakingPenalty } = useAuth();
   const [showScanner, setShowScanner] = useState(false);
   const [showMatchmaking, setShowMatchmaking] = useState(false);
   const [matchDetails, setMatchDetails] = useState<{mode: string, size: string} | null>(null);
@@ -76,6 +76,25 @@ const Index = () => {
     navigate('/game');
   }, [navigate]);
 
+  useEffect(() => {
+    if (!user || loading) return;
+    refreshStats();
+
+    const onVisibleOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        refreshStats();
+      }
+    };
+
+    window.addEventListener('focus', onVisibleOrFocus);
+    document.addEventListener('visibilitychange', onVisibleOrFocus);
+
+    return () => {
+      window.removeEventListener('focus', onVisibleOrFocus);
+      document.removeEventListener('visibilitychange', onVisibleOrFocus);
+    };
+  }, [user, loading, refreshStats]);
+
   if (showMatchmaking) {
     return <MatchmakingScreen onMatchFound={handleMatchFound} />;
   }
@@ -120,8 +139,10 @@ const Index = () => {
               <Dashboard
                 user={user}
                 stats={stats}
+                hasPendingMatchmakingPenalty={hasPendingMatchmakingPenalty}
                 onSignOut={signOut}
                 onMatchMake={(mode, size) => {
+                  applyMatchmakingPenalty();
                   setMatchDetails({ mode, size });
                   setShowMatchmaking(true);
                 }}

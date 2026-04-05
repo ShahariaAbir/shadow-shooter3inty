@@ -6,13 +6,14 @@ import type { PlayerStats } from '@/lib/insforge';
 interface DashboardProps {
   user: { name: string; email: string };
   stats: PlayerStats | null;
+  hasPendingMatchmakingPenalty: boolean;
   onSignOut: () => void;
   onMatchMake: (mode: string, size: string) => void;
   onOfflinePlay: () => void;
   onEditName: (newName: string) => Promise<void>;
 }
 
-export default function Dashboard({ user, stats, onSignOut, onMatchMake, onOfflinePlay, onEditName }: DashboardProps) {
+export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, onSignOut, onMatchMake, onOfflinePlay, onEditName }: DashboardProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchMode, setMatchMode] = useState<'classic' | 'tdm'>('classic');
@@ -20,7 +21,9 @@ export default function Dashboard({ user, stats, onSignOut, onMatchMake, onOffli
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(user.name);
 
-  const kd = stats ? computeKD(stats.total_kills, stats.total_deaths) : '0.00';
+  const rawKD = stats ? Number(computeKD(stats.total_kills, stats.total_deaths)) : 0;
+  const hasPenalty = hasPendingMatchmakingPenalty && rawKD > 0.1;
+  const kd = Math.max(rawKD - (hasPenalty ? 0.1 : 0), 0).toFixed(2);
   const level = stats?.level ?? 1;
   const xp = stats?.xp ?? 0;
   const xpForNextLevel = level * 100;
