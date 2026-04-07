@@ -14,10 +14,21 @@ export async function fetchMoneyUserProfile(userId: string, expectedUsername?: s
   const res = await fetch(`${MT_BASE}/users?id=eq.${encodeURIComponent(userId)}&select=id,username,balance`, { headers });
   if (!res.ok) return { ok: false, reason: 'Unable to fetch money app profile.' };
   const rows = await res.json() as MoneyUser[];
-  if (!rows?.length) return { ok: false, reason: 'Money app account not found.' };
+  if (!rows?.length) {
+    if (expectedUsername?.trim()) {
+      const usernameCheck = await fetch(`${MT_BASE}/users?username=eq.${encodeURIComponent(expectedUsername.trim())}&select=id`, { headers });
+      if (usernameCheck.ok) {
+        const usernameRows = await usernameCheck.json() as Array<{ id: string }>;
+        if (usernameRows.length > 0) {
+          return { ok: false, reason: 'Wrong user ID.' };
+        }
+      }
+    }
+    return { ok: false, reason: 'Wrong user ID or account not found.' };
+  }
   const user = rows[0];
   if (expectedUsername && user.username.toLowerCase() !== expectedUsername.trim().toLowerCase()) {
-    return { ok: false, reason: 'Money app username does not match this user ID.' };
+    return { ok: false, reason: 'Wrong username for this user ID.' };
   }
   return { ok: true, user };
 }

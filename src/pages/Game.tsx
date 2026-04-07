@@ -81,7 +81,7 @@ function ptInObsDynamic(x: number, y: number, obstacles: Obstacle[]) {
 const Game = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, stats, hasPendingMatchmakingPenalty, submitMatchResult, consumeGrenade } = useAuth();
+  const { user, stats, hasPendingMatchmakingPenalty, submitMatchResult } = useAuth();
   const isMatchmakingMode = searchParams.get('mode') === 'matchmaking';
   const [screen, setScreen] = useState<Screen>('lobby');
   const [gameMode, setGameMode] = useState<GameMode>('ffa');
@@ -1083,6 +1083,7 @@ const Game = () => {
   // Auto-start matchmaking game based on user selection
   useEffect(() => {
     if (!isMatchmakingMode) return;
+    if (screen !== 'lobby') return;
     
     const parsedGameMode = (searchParams.get('gameMode') as GameMode) || 'tdm';
     const parsedTeamSize = searchParams.get('teamSize') || 'squad';
@@ -1172,7 +1173,7 @@ const Game = () => {
     botsRef.current = botConfigs.map(bc => createBotState(bc.id, bc.tier));
     initGame(players, parsedGameMode, 'classic', botConfigs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMatchmakingMode, searchParams, user?.name, settings.username, stats, hasPendingMatchmakingPenalty, initGame]);
+  }, [isMatchmakingMode, searchParams, user?.name, settings.username, stats, hasPendingMatchmakingPenalty, initGame, screen]);
 
   // ─── UPDATE ───
 
@@ -1345,6 +1346,16 @@ const Game = () => {
       for (const w of glueWallsRef.current) {
         if (distToSegment(b.x, b.y, w.x1, w.y1, w.x2, w.y2) < BULLET_R + 4) {
           w.health -= 1; return false;
+        }
+      }
+
+      if (isHostRef.current) {
+        for (const grenade of grenadesRef.current) {
+          if (grenade.exploded || b.ownerId === grenade.ownerId) continue;
+          if ((b.x - grenade.x) ** 2 + (b.y - grenade.y) ** 2 <= (BULLET_R + 8) ** 2) {
+            explodeGrenade(grenade);
+            return false;
+          }
         }
       }
 
@@ -2022,23 +2033,13 @@ const Game = () => {
     }
   }, [broadcast, sendData]);
 
-  const useGrenade = useCallback(async () => {
+  const useGrenade = useCallback(() => {
     if (!aliveRef.current) return;
     if (grenadeInventoryRef.current <= 0) return;
 
     grenadeInventoryRef.current -= 1;
     grenadesThrownByMeRef.current += 1;
     setUiGrenades(grenadeInventoryRef.current);
-
-    if (isMatchmakingMode && user) {
-      const syncResult = await consumeGrenade();
-      if (!syncResult.ok) {
-        grenadeInventoryRef.current += 1;
-        grenadesThrownByMeRef.current = Math.max(0, grenadesThrownByMeRef.current - 1);
-        setUiGrenades(grenadeInventoryRef.current);
-        return;
-      }
-    }
 
     const p = myPlayerRef.current;
     const throwDistance = PLAYER_R + 10;
@@ -2064,9 +2065,10 @@ const Game = () => {
       broadcast({ type: 'grenadePlaced', grenade });
       broadcast({ type: 'grenadeSync', grenades: [{ id: grenade.id, x: grenade.x, y: grenade.y, vx: grenade.vx, vy: grenade.vy }] });
     } else {
+      grenadesRef.current.push(grenade);
       sendData({ type: 'throwGrenade', grenade });
     }
-  }, [broadcast, sendData, isMatchmakingMode, user, consumeGrenade]);
+  }, [broadcast, sendData]);
 
   // ─── PAUSE MENU HELPERS ───
 
