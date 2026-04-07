@@ -112,6 +112,8 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
   const newWins = current.wins + (isWin ? 1 : 0);
   const newLosses = current.losses + (isWin ? 0 : 1);
   const earnedCoins = Math.max(0, kills * ECONOMY_CONFIG.coinsPerKill);
+  const safeGrenadesUsed = Math.max(0, Math.floor(grenadesUsed || 0));
+  const nextGrenadesOwned = Math.max(0, (current.grenades_owned || 0) - safeGrenadesUsed);
   const { error: updateError } = await insforge.database
     .from('player_stats')
     .update({
@@ -123,6 +125,7 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
       wins: newWins,
       losses: newLosses,
       coins: Math.max(0, (current.coins || 0) + earnedCoins),
+      grenades_owned: nextGrenadesOwned,
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
