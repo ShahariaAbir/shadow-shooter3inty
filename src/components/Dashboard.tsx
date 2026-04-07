@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Swords, TrendingUp, Star, LogOut, Play, Loader2, Bomb, Coins, ShoppingCart } from 'lucide-react';
 import { computeKD } from '@/lib/insforge';
 import type { PlayerStats } from '@/lib/insforge';
 import { ECONOMY_CONFIG } from '@/lib/economy';
+import { usePeer } from '@/hooks/usePeer';
 
 interface DashboardProps {
   user: { name: string; email: string };
@@ -29,6 +30,9 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
   const [joinCode, setJoinCode] = useState('');
   const [partyMembers, setPartyMembers] = useState<string[]>([user.name]);
   const [partyMsg, setPartyMsg] = useState('');
+  const [isPartyHost, setIsPartyHost] = useState(true);
+
+  const { createRoom, joinRoom, sendData, broadcast, onData, roomCode, connected, isHost, playerCount, disconnect, error } = usePeer();
 
   const rawKD = stats ? Number(computeKD(stats.total_kills, stats.total_deaths)) : 0;
   const hasPenalty = hasPendingMatchmakingPenalty && rawKD > 0.1;
@@ -60,29 +64,82 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
     setBuyingGrenade(false);
   };
 
-  const generatePartyCode = () => `${Math.floor(1000 + Math.random() * 9000)}`;
-
   const handleOpenMatchModal = () => {
     setShowMatchModal(true);
-    setPartyCode(generatePartyCode());
+    createRoom();
+    setPartyCode('');
+    setIsPartyHost(true);
     setPartyMembers([user.name]);
     setJoinCode('');
     setPartyMsg('');
   };
 
   const handleJoinByCode = () => {
-    if (!/^\d{4}$/.test(joinCode.trim())) {
-      setPartyMsg('Enter a valid 4-digit code.');
+    const code = joinCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{4}$/.test(code)) {
+      setPartyMsg('Enter a valid 4-character code.');
       return;
     }
-    if (partyMembers.length >= 4) {
-      setPartyMsg('Team is already full.');
-      return;
-    }
-    const remoteName = `Remote-${joinCode.trim()}`;
-    setPartyMembers(prev => prev.includes(remoteName) ? prev : [...prev, remoteName]);
-    setPartyMsg(`Joined with code ${joinCode.trim()}.`);
+    joinRoom(code);
+    setIsPartyHost(false);
+    setPartyMembers([user.name]);
+    setPartyMsg(`Joining ${code}...`);
     setJoinCode('');
+  };
+
+  useEffect(() => {
+    onData((data: any, fromId: string) => {
+      if (data?.type === 'partyHello' && isHost) {
+        const nextMembers = Array.from(new Set([user.name, ...(data.members || []), data.name].filter(Boolean)));
+        setPartyMembers(nextMembers);
+        broadcast({ type: 'partyState', members: nextMembers });
+      }
+      if (data?.type === 'partyState' && Array.isArray(data.members)) {
+        setPartyMembers(Array.from(new Set(data.members.filter(Boolean))));
+      }
+      if (data?.type === 'startSearch') {
+        setShowMatchModal(false);
+        onMatchMake(data.mode, data.size, data.partySize);
+      }
+      if (data?.type === 'partyLeft' && isHost) {
+        const nextMembers = Array.from(new Set([user.name, ...(data.members || [])]));
+        setPartyMembers(nextMembers);
+        broadcast({ type: 'partyState', members: nextMembers });
+      }
+      if (data?.type === 'partyMessage' && typeof data.text === 'string') {
+        setPartyMsg(data.text);
+      }
+      if (fromId && isHost && data?.type === 'partyHelloAck') {
+        // no-op; reserved for future per-peer ack flow
+      }
+    });
+  }, [broadcast, isHost, onData, onMatchMake, partyMembers, user.name]);
+
+  useEffect(() => {
+    if (!roomCode) return;
+    setPartyCode(roomCode);
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (error) setPartyMsg(error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!connected) return;
+    if (isHost) {
+      const hostMembers = Array.from(new Set([user.name, ...partyMembers]));
+      if (hostMembers.join('|') !== partyMembers.join('|')) {
+        setPartyMembers(hostMembers);
+      }
+      broadcast({ type: 'partyState', members: hostMembers });
+    } else {
+      sendData({ type: 'partyHello', name: user.name, members: [user.name] });
+    }
+  }, [broadcast, connected, isHost, partyMembers, sendData, user.name]);
+
+  const closeMatchModal = () => {
+    disconnect();
+    setShowMatchModal(false);
   };
 
   const isDuoLocked = partyMembers.length > 2;
@@ -266,7 +323,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
           <div className="bg-[#0f1720] border border-white/10 rounded-2xl w-full max-w-sm landscape:max-w-lg landscape:max-h-[90vh] overflow-hidden flex flex-col slide-in-from-bottom-5 animate-in fade-in">
             <div className="p-4 border-b border-white/10 flex items-center justify-between">
               <h2 className="text-white font-display font-bold tracking-widest text-lg">MATCH SETTINGS</h2>
-              <button onClick={() => setShowMatchModal(false)} className="text-white/50 hover:text-white">
+              <button onClick={closeMatchModal} className="text-white/50 hover:text-white">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
@@ -323,7 +380,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
             </div>
 
             <div className="px-5 pb-2 space-y-3">
-              <p className="text-white/60 font-mono text-xs">TEAM CODE (REMOTE PARTY)</p>
+              <p className="text-white/60 font-mono text-xs">TEAM CODE (REMOTE PARTY • WEBRTC)</p>
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-display tracking-[0.25em] text-lg text-primary">
                   {partyCode}
@@ -338,7 +395,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
               <div className="grid grid-cols-[1fr_auto] gap-2">
                 <input
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
                   placeholder="Enter join code"
                   className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-mono text-white outline-none focus:border-primary/60"
                 />
@@ -348,6 +405,9 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
               </div>
               {partyMsg && <p className="text-[10px] font-mono text-muted-foreground">{partyMsg}</p>}
               <p className="text-[10px] font-mono text-white/70">
+                Role: {isPartyHost ? 'Host' : 'Joined'} • P2P: {connected ? 'Connected' : 'Waiting'} • Peers: {Math.max(playerCount - 1, 0)}
+              </p>
+              <p className="text-[10px] font-mono text-white/70">
                 Team members: {partyMembers.length} • Remaining needed: {Math.max((selectedTeamSize === 'duo' ? 2 : 4) - partyMembers.length, 0)}
               </p>
             </div>
@@ -356,6 +416,13 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
               <button
                 onClick={() => {
                   setShowMatchModal(false);
+                  if (isHost) {
+                    broadcast({ type: 'startSearch', mode: matchMode, size: selectedTeamSize, partySize: partyMembers.length });
+                  } else {
+                    sendData({ type: 'partyMessage', text: 'Only host can start search. Waiting for host...' });
+                    setPartyMsg('Only host can start search.');
+                    return;
+                  }
                   onMatchMake(matchMode, selectedTeamSize, partyMembers.length);
                 }}
                 className="w-full py-3 rounded-xl font-display font-black tracking-[0.2em] text-black"
