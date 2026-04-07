@@ -10,7 +10,7 @@ interface DashboardProps {
   stats: PlayerStats | null;
   hasPendingMatchmakingPenalty: boolean;
   onSignOut: () => void;
-  onMatchMake: (mode: string, size: string, partySize: number) => void;
+  onMatchMake: (mode: string, size: string, partySize: number, partyCode?: string) => void;
   onOfflinePlay: () => void;
   onEditName: (newName: string) => Promise<void>;
   onBuyGrenades: () => Promise<{ ok: boolean; reason?: string }>;
@@ -99,7 +99,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
       }
       if (data?.type === 'startSearch') {
         setShowMatchModal(false);
-        onMatchMake(data.mode, data.size, data.partySize);
+        onMatchMake(data.mode, data.size, data.partySize, data.partyCode);
       }
       if (data?.type === 'partyLeft' && isHost) {
         const nextMembers = Array.from(new Set([user.name, ...(data.members || [])]));
@@ -417,13 +417,13 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
                 onClick={() => {
                   setShowMatchModal(false);
                   if (isHost) {
-                    broadcast({ type: 'startSearch', mode: matchMode, size: selectedTeamSize, partySize: partyMembers.length });
+                    broadcast({ type: 'startSearch', mode: matchMode, size: selectedTeamSize, partySize: partyMembers.length, partyCode });
                   } else {
                     sendData({ type: 'partyMessage', text: 'Only host can start search. Waiting for host...' });
                     setPartyMsg('Only host can start search.');
                     return;
                   }
-                  onMatchMake(matchMode, selectedTeamSize, partyMembers.length);
+                  onMatchMake(matchMode, selectedTeamSize, partyMembers.length, partyCode);
                 }}
                 className="w-full py-3 rounded-xl font-display font-black tracking-[0.2em] text-black"
                 style={{ background: 'linear-gradient(135deg, #00ff88, #00cc6a)' }}
