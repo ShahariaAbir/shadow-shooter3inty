@@ -8,7 +8,7 @@ import MatchmakingScreen from '@/components/MatchmakingScreen';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, stats, hasPendingMatchmakingPenalty, loading, signInWithGoogle, signOut, updateName, refreshStats, applyMatchmakingPenalty } = useAuth();
+  const { user, stats, hasPendingMatchmakingPenalty, loading, signInWithGoogle, signOut, updateName, refreshStats, applyMatchmakingPenalty, buyGrenadePack } = useAuth();
   const [showScanner, setShowScanner] = useState(false);
   const [showMatchmaking, setShowMatchmaking] = useState(false);
   const [matchDetails, setMatchDetails] = useState<{mode: string, size: string} | null>(null);
@@ -148,6 +148,7 @@ const Index = () => {
                 }}
                 onOfflinePlay={handleOfflinePlay}
                 onEditName={updateName}
+                onBuyGrenades={buyGrenadePack}
               />
             ) : (
               /* Guest mode */

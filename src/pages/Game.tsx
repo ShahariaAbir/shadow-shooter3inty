@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Zap, Crosshair, Heart, Shield } from 'lucide-react';
+import { Zap, Crosshair, Heart, Shield, Bomb } from 'lucide-react';
 import Joystick from '@/components/game/Joystick';
 import AbilityButton from '@/components/game/AbilityButton';
 import Lobby from '@/components/game/Lobby';
@@ -24,9 +24,11 @@ import {
   GLUE_WALL_DURATION, POWERUP_SPAWN_INTERVAL, POWERUP_R, CLASSIC_WIN_ROUNDS,
   SMG_COOLDOWN, SMG_DAMAGE, SMG_RANGE, SMG_SPEED,
   SNIPER_COOLDOWN, SNIPER_DAMAGE, SNIPER_RANGE, SNIPER_SPEED, SNIPER_BULLET_R,
+  GRENADE_TRIGGER_RADIUS, GRENADE_BLAST_RADIUS, GRENADE_AUTO_BLAST_MS,
 } from '@/types/game';
-import type { PlayerState, Bullet, Powerup, GlueWall, PlayerData, LobbyPlayer, GameMode, GameResult, Obstacle, WeaponType } from '@/types/game';
+import type { PlayerState, Bullet, Powerup, GlueWall, PlayerData, LobbyPlayer, GameMode, GameResult, Obstacle, WeaponType, Grenade } from '@/types/game';
 import { collidesObs, ptInObs, distToSegment, getRandomSpawn, lineIntersectsCircle } from '@/lib/gameHelpers';
+import { BOT_GRENADE_CONFIG } from '@/lib/economy';
 
 type Screen = 'lobby' | 'playing' | 'gameover';
 
@@ -49,6 +51,13 @@ const resolveProtectionUntil = (data: { protectedFor?: number; protectedUntil?: 
 interface Particle {
   x: number; y: number; vx: number; vy: number;
   life: number; maxLife: number; color: string; size: number;
+}
+interface BlastRing {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  createdAt: number;
 }
 
 type ControlKey = 'move' | 'aim' | 'leftButtons' | 'rightButtons';
@@ -84,6 +93,7 @@ const Game = () => {
   const [uiAbilities, setUiAbilities] = useState({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
   const [uiEffectTimes, setUiEffectTimes] = useState({ speed: 0, fastBullets: 0 });
   const [uiAlive, setUiAlive] = useState(true);
+  const [uiGrenades, setUiGrenades] = useState(0);
   const [isSolo, setIsSolo] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [myColor, setMyColor] = useState('#00ff88');
@@ -126,6 +136,7 @@ const Game = () => {
   const bulletsRef = useRef<Bullet[]>([]);
   const powerupsRef = useRef<Powerup[]>([]);
   const glueWallsRef = useRef<GlueWall[]>([]);
+  const grenadesRef = useRef<Grenade[]>([]);
   const moveInRef = useRef({ x: 0, y: 0 });
   const aimInRef = useRef({ x: 0, y: 0 });
   const lastFireRef = useRef(0);
@@ -142,6 +153,10 @@ const Game = () => {
   const myIdRef = useRef('');
   const isHostRef = useRef(false);
   const particlesRef = useRef<Particle[]>([]);
+  const blastRingsRef = useRef<BlastRing[]>([]);
+  const grenadeInventoryRef = useRef(0);
+  const grenadesThrownByMeRef = useRef(0);
+  const botGrenadeTickRef = useRef(0);
   const killFeedRef = useRef<KillFeedEntry[]>([]);
   const killFeedIdRef = useRef(0);
   const hitFlashRef = useRef(0);
@@ -155,7 +170,7 @@ const Game = () => {
   const handleSaveSettings = useCallback((s: GameSettings) => {
     setSettings(s);
     saveSettings(s);
-  }, []);
+  }, [isMatchmakingMode, stats?.grenades_owned]);
 
   const getDefaultControlPositions = useCallback((source: GameSettings): ControlPositions => {
     const vw = window.innerWidth;
@@ -184,7 +199,7 @@ const Game = () => {
         y: buttonsY + source.rightButtonsOffsetY,
       },
     };
-  }, []);
+  }, [isMatchmakingMode, stats?.grenades_owned]);
 
   useEffect(() => {
     const defaults = getDefaultControlPositions(settings);
@@ -297,7 +312,7 @@ const Game = () => {
       const idx = prev.length + 1;
       return [...prev, { id: `bot-${idx}-${Date.now()}`, tier }];
     });
-  }, []);
+  }, [isMatchmakingMode, stats?.grenades_owned]);
 
   const handleRemoveBot = useCallback(() => {
     setLobbyBots(prev => prev.slice(0, -1));
@@ -378,6 +393,8 @@ const Game = () => {
     bulletsRef.current = [];
     powerupsRef.current = [];
     glueWallsRef.current = [];
+    grenadesRef.current = [];
+    blastRingsRef.current = [];
     abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
     effectsRef.current = { speed: 0, fastBullets: 0 };
     aliveRef.current = true;
@@ -391,9 +408,12 @@ const Game = () => {
     setUiScores({});
     setUiTeamScores({ green: 0, red: 0 });
     setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
+    grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
+    grenadesThrownByMeRef.current = 0;
+    setUiGrenades(grenadeInventoryRef.current);
     setUiRoundBanner(null);
     setScreen('playing');
-  }, []);
+  }, [isMatchmakingMode, stats?.grenades_owned]);
 
   const startSoloGame = useCallback((botTier: BotTier = 1, botCount: number = 1, mode: GameMode = 'ffa', mapId: string = 'classic', teamBotConfigs?: Array<{ team: 'green' | 'red'; tier: BotTier }>) => {
     isSoloRef.current = true;
@@ -501,7 +521,7 @@ const Game = () => {
       } else {
         isWin = teamScoresRef.current.green > teamScoresRef.current.red;
       }
-      submitMatchResult(myKills, myDeaths, isWin);
+      submitMatchResult(myKills, myDeaths, isWin, grenadesThrownByMeRef.current);
     }
   }, [broadcast, isMatchmakingMode, user, submitMatchResult]);
 
@@ -529,6 +549,8 @@ const Game = () => {
     bulletsRef.current = [];
     powerupsRef.current = [];
     glueWallsRef.current = [];
+    grenadesRef.current = [];
+    blastRingsRef.current = [];
     abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
     effectsRef.current = { speed: 0, fastBullets: 0 };
     aliveRef.current = true;
@@ -540,6 +562,9 @@ const Game = () => {
     setUiHealth(MAX_HEALTH);
     setUiAlive(true);
     setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
+    grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
+    grenadesThrownByMeRef.current = 0;
+    setUiGrenades(grenadeInventoryRef.current);
     setUiRoundBanner(null);
     broadcast({ type: 'newRound', players, protectedUntil: roundProtectedUntil });
   }, [broadcast]);
@@ -747,6 +772,8 @@ const Game = () => {
     }
     else if (data.type === 'wallPlaced') { glueWallsRef.current.push(data.wall); }
     else if (data.type === 'wallDestroyed') { glueWallsRef.current = glueWallsRef.current.filter(w => w.id !== data.wallId); }
+    else if (data.type === 'grenadePlaced') { grenadesRef.current.push(data.grenade); }
+    else if (data.type === 'grenadeExploded') { grenadesRef.current = grenadesRef.current.filter(g => g.id !== data.grenadeId); }
     else if (data.type === 'scoreUpdate') {
       scoresRef.current = data.scores; setUiScores({ ...data.scores });
       if (data.teamScores) { teamScoresRef.current = data.teamScores; setUiTeamScores({ ...data.teamScores }); }
@@ -778,12 +805,14 @@ const Game = () => {
         if (p.id !== myIdRef.current)
           remotePlayersRef.current.set(p.id, { ...p.state, alive: true, protectedUntil: roundProtectedUntil } as PlayerState & { protectedUntil?: number });
       });
-      bulletsRef.current = []; powerupsRef.current = []; glueWallsRef.current = [];
+      bulletsRef.current = []; powerupsRef.current = []; glueWallsRef.current = []; grenadesRef.current = []; blastRingsRef.current = [];
       abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
       effectsRef.current = { speed: 0, fastBullets: 0 };
       aliveRef.current = true;
       setUiHealth(MAX_HEALTH); setUiAlive(true);
       setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
+      grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
+      setUiGrenades(grenadeInventoryRef.current);
       setUiRoundBanner(null);
     }
     else if (data.type === 'collectPowerup' && isHostRef.current) {
@@ -797,6 +826,11 @@ const Game = () => {
       const wall = { ...data.wall, createdAt: Date.now() };
       glueWallsRef.current.push(wall);
       broadcast({ type: 'wallPlaced', wall }, fromId);
+    }
+    else if (data.type === 'throwGrenade' && isHostRef.current) {
+      const grenade = { ...data.grenade, createdAt: Date.now(), exploded: false };
+      grenadesRef.current.push(grenade);
+      broadcast({ type: 'grenadePlaced', grenade }, fromId);
     }
     else if (data.type === 'myName') {
       playerNamesRef.current[fromId] = data.name;
@@ -871,6 +905,38 @@ const Game = () => {
     }
     return { x, y, collided: true };
   };
+
+  const getAllLivingPlayerPositions = useCallback(() => {
+    const players: Array<{ id: string; x: number; y: number; alive: boolean }> = [];
+    players.push({ id: myIdRef.current, x: myPlayerRef.current.x, y: myPlayerRef.current.y, alive: aliveRef.current });
+    for (const [id, state] of remotePlayersRef.current.entries()) {
+      players.push({ id, x: state.x, y: state.y, alive: state.alive !== false });
+    }
+    return players;
+  }, []);
+
+  const explodeGrenade = useCallback((grenade: Grenade) => {
+    if (grenade.exploded) return;
+    grenade.exploded = true;
+    grenadesRef.current = grenadesRef.current.filter(g => g.id !== grenade.id);
+    blastRingsRef.current.push({
+      id: `blast-${grenade.id}`,
+      x: grenade.x,
+      y: grenade.y,
+      radius: grenade.blastRadius,
+      createdAt: Date.now(),
+    });
+    spawnParticles(grenade.x, grenade.y, '#ff4444', 34, 6);
+    SFX.grenadeBlast();
+    const players = getAllLivingPlayerPositions();
+    for (const p of players) {
+      if (!p.alive) continue;
+      if (Math.hypot(p.x - grenade.x, p.y - grenade.y) <= grenade.blastRadius) {
+        handleKillEvent(grenade.ownerId, p.id);
+      }
+    }
+    broadcast({ type: 'grenadeExploded', grenadeId: grenade.id });
+  }, [broadcast, getAllLivingPlayerPositions, handleKillEvent]);
 
   const broadcastBotStates = useCallback(() => {
     if (!isHostRef.current || botsRef.current.length === 0) return;
@@ -964,6 +1030,7 @@ const Game = () => {
     const iv = setInterval(() => {
       setUiHealth(myPlayerRef.current.health);
       setUiAbilities({ ...abilitiesRef.current });
+      setUiGrenades(grenadeInventoryRef.current);
       const now = Date.now();
       const sr = effectsRef.current.speed > 0 ? Math.max(0, Math.ceil((ABILITY_DURATION - (now - effectsRef.current.speed)) / 1000)) : 0;
       const fr = effectsRef.current.fastBullets > 0 ? Math.max(0, Math.ceil((ABILITY_DURATION - (now - effectsRef.current.fastBullets)) / 1000)) : 0;
@@ -1313,6 +1380,27 @@ const Game = () => {
       return true;
     });
 
+    if (isHostRef.current) {
+      grenadesRef.current.forEach(grenade => {
+        if (grenade.exploded) return;
+        const timedOut = now - grenade.createdAt >= GRENADE_AUTO_BLAST_MS;
+        let triggered = timedOut;
+        if (!triggered) {
+          for (const target of getAllLivingPlayerPositions()) {
+            if (!target.alive) continue;
+            if (target.id === grenade.ownerId) continue;
+            if (Math.hypot(target.x - grenade.x, target.y - grenade.y) <= grenade.triggerRadius) {
+              triggered = true;
+              break;
+            }
+          }
+        }
+        if (triggered) explodeGrenade(grenade);
+      });
+    }
+
+    blastRingsRef.current = blastRingsRef.current.filter(br => now - br.createdAt < 450);
+
     // Resolve remote glue wall collisions
     for (const [, rp] of remotePlayersRef.current) {
       if (rp.alive && collidesWithGlueWall(rp.x, rp.y, PLAYER_R)) {
@@ -1413,6 +1501,28 @@ const Game = () => {
           glueWallsRef.current.push(action.placedWall);
           broadcast({ type: 'wallPlaced', wall: action.placedWall });
         }
+
+        if (
+          isMatchmakingMode &&
+          now - botGrenadeTickRef.current > BOT_GRENADE_CONFIG.throwCheckIntervalMs &&
+          nearestDist < BOT_GRENADE_CONFIG.maxThrowDistance &&
+          Math.random() < BOT_GRENADE_CONFIG.throwChancePerCheck &&
+          now - bot.lastFire > BOT_GRENADE_CONFIG.throwCooldownMs
+        ) {
+          botGrenadeTickRef.current = now;
+          const grenade: Grenade = {
+            id: `g-${bot.id}-${(Math.random() * 1e9 | 0).toString(36)}`,
+            x: nearestEnemy.x,
+            y: nearestEnemy.y,
+            ownerId: bot.id,
+            createdAt: now,
+            triggerRadius: GRENADE_TRIGGER_RADIUS,
+            blastRadius: GRENADE_BLAST_RADIUS,
+            exploded: false,
+          };
+          grenadesRef.current.push(grenade);
+          broadcast({ type: 'grenadePlaced', grenade });
+        }
       }
     }
   };
@@ -1483,6 +1593,41 @@ const Game = () => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(POWERUP_ICONS[pu.type] || '?', pu.x, pu.y);
+    });
+
+    grenadesRef.current.forEach(grenade => {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,68,68,0.12)';
+      ctx.beginPath();
+      ctx.arc(grenade.x, grenade.y, grenade.triggerRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,68,68,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(grenade.x, grenade.y, grenade.triggerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ff3b3b';
+      ctx.beginPath();
+      ctx.arc(grenade.x, grenade.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#330000';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('G', grenade.x, grenade.y);
+      ctx.restore();
+    });
+
+    blastRingsRef.current.forEach(ring => {
+      const t = Math.min(1, (Date.now() - ring.createdAt) / 450);
+      const pulseRadius = ring.radius * (0.5 + t * 0.8);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,100,60,${0.8 - t * 0.8})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, pulseRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     });
 
     // Bullets
@@ -1805,6 +1950,33 @@ const Game = () => {
     }
   }, [broadcast, sendData]);
 
+  const useGrenade = useCallback(() => {
+    if (!aliveRef.current) return;
+    if (grenadeInventoryRef.current <= 0) return;
+    grenadeInventoryRef.current -= 1;
+    grenadesThrownByMeRef.current += 1;
+    setUiGrenades(grenadeInventoryRef.current);
+    const p = myPlayerRef.current;
+    const throwDistance = 90;
+    const grenade: Grenade = {
+      id: `g-${myIdRef.current}-${(Math.random() * 1e9 | 0).toString(36)}`,
+      x: p.x + Math.cos(p.angle) * throwDistance,
+      y: p.y + Math.sin(p.angle) * throwDistance,
+      ownerId: myIdRef.current,
+      createdAt: Date.now(),
+      triggerRadius: GRENADE_TRIGGER_RADIUS,
+      blastRadius: GRENADE_BLAST_RADIUS,
+      exploded: false,
+    };
+    SFX.wallPlace();
+    if (isHostRef.current) {
+      grenadesRef.current.push(grenade);
+      broadcast({ type: 'grenadePlaced', grenade });
+    } else {
+      sendData({ type: 'throwGrenade', grenade });
+    }
+  }, [broadcast, sendData]);
+
   // ─── PAUSE MENU HELPERS ───
 
   const handleBackToLobby = useCallback(() => {
@@ -1918,6 +2090,18 @@ const Game = () => {
           <AbilityButton icon={<Heart className="w-3.5 h-3.5" />} count={uiAbilities.heal} onClick={isEditingControls ? () => {} : useHeal} color="#00ff44" size={bSize} />
           <AbilityButton icon={<Shield className="w-3.5 h-3.5" />} count={uiAbilities.glueWall} onClick={isEditingControls ? () => {} : usePlaceWall} color="#9944ff" size={bSize} />
         </div>
+      </div>
+
+      <div
+        className="absolute z-20"
+        style={{
+          left: controlPositions.move.x,
+          top: controlPositions.move.y - (jSize / 2 + bSize + 14),
+          transform: 'translate(-50%, -50%)',
+          pointerEvents: 'auto',
+        }}
+      >
+        <AbilityButton icon={<Bomb className="w-3.5 h-3.5" />} count={uiGrenades} onClick={isEditingControls ? () => {} : useGrenade} color="#ff3b3b" size={bSize} />
       </div>
 
       <div
