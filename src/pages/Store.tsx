@@ -35,7 +35,7 @@ export default function Store() {
 
   const connectMoneyApp = async () => {
     if (!moneyId.trim() || !moneyUsername.trim()) {
-      setMsg('Enter both money app user ID and username.');
+      setMsg('Enter both Shadow Cash user ID and Password of your Shadow Cash Account.');
       return;
     }
     setBusy(true);
@@ -75,7 +75,7 @@ export default function Store() {
 
   const handleBuyCoinPack = async (amount: number) => {
     if (!moneyConnected) {
-      setMsg('Connect and verify your money app profile first.');
+      setMsg('Connect and verify your Shadow Cash app profile first.');
       return;
     }
 
@@ -133,7 +133,7 @@ export default function Store() {
               setMoneyId(e.target.value);
               setMoneyConnected(false);
             }}
-            placeholder="Money app user id"
+            placeholder="Shadow Cash app user id"
             className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
           />
           <input
@@ -142,13 +142,13 @@ export default function Store() {
               setMoneyUsername(e.target.value);
               setMoneyConnected(false);
             }}
-            placeholder="Money app username"
+            placeholder="user password"
             className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
           />
           <button disabled={busy || !canUseStore} onClick={connectMoneyApp} className="w-full h-10 rounded-lg bg-primary/20 border border-primary/40 text-primary text-sm font-semibold">
             {busy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Connect'}
           </button>
-          <p className="text-xs text-muted-foreground">Connected: {moneyConnected ? (moneyUsername || 'connected') : 'not connected'} {moneyBalance !== null && moneyConnected ? `• Balance: ${moneyBalance}` : ''}</p>
+          <p className="text-xs text-muted-foreground">Connected: {moneyConnected ? (moneyUserid || 'connected') : 'not connected'} {moneyBalance !== null && moneyConnected ? `• Balance: ${moneyBalance}` : ''}</p>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
@@ -160,7 +160,7 @@ export default function Store() {
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold"><Wallet className="w-4 h-4" /> Buy Coins via Money Transfer</div>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Wallet className="w-4 h-4" /> Buy Coins via Shadow Cash</div>
           <div className="grid grid-cols-3 gap-2">
             {COIN_PACKS.map(pack => (
               <button key={pack} disabled={busy || !canUseStore || !moneyConnected} onClick={() => handleBuyCoinPack(pack)} className="h-10 rounded-lg border border-yellow-400/40 bg-yellow-500/15 text-yellow-200 text-xs font-semibold flex items-center justify-center gap-1">
