@@ -76,8 +76,8 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
 
   const handleJoinByCode = () => {
     const code = joinCode.trim().toUpperCase();
-    if (!/^[A-Z0-9]{4}$/.test(code)) {
-      setPartyMsg('Enter a valid 4-character code.');
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      setPartyMsg('Enter a valid 6-character code.');
       return;
     }
     joinRoom(code);
