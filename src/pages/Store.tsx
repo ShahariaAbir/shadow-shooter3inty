@@ -15,6 +15,7 @@ export default function Store() {
   const [moneyId, setMoneyId] = useState('');
   const [moneyUsername, setMoneyUsername] = useState('');
   const [moneyBalance, setMoneyBalance] = useState<number | null>(null);
+  const [moneyConnected, setMoneyConnected] = useState(false);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -41,6 +42,7 @@ export default function Store() {
     setMsg('');
     const profile = await fetchMoneyUserProfile(moneyId.trim(), moneyUsername.trim());
     if (!profile.ok || !profile.user) {
+      setMoneyConnected(false);
       setMsg(profile.reason || 'Unable to connect account.');
       setBusy(false);
       return;
@@ -50,7 +52,8 @@ export default function Store() {
     setMoneyId(profile.user.id);
     setMoneyUsername(profile.user.username);
     setMoneyBalance(Number(profile.user.balance || 0));
-    setMsg('Money transfer account connected.');
+    setMoneyConnected(true);
+    setMsg('Account connected successfully.');
     setBusy(false);
   };
 
@@ -71,13 +74,22 @@ export default function Store() {
   };
 
   const handleBuyCoinPack = async (amount: number) => {
-    if (!moneyId) {
-      setMsg('Connect money app profile first.');
+    if (!moneyConnected) {
+      setMsg('Connect and verify your money app profile first.');
       return;
     }
 
     setBusy(true);
     setMsg('');
+    const profile = await fetchMoneyUserProfile(moneyId.trim(), moneyUsername.trim());
+    if (!profile.ok || !profile.user) {
+      setMoneyConnected(false);
+      setMoneyBalance(null);
+      setMsg(profile.reason || 'Account verification failed.');
+      setBusy(false);
+      return;
+    }
+
     const transfer = await transferToShadowShooter(moneyId, amount);
     if (!transfer.ok) {
       setMsg(transfer.reason || 'Money transfer failed.');
@@ -117,20 +129,26 @@ export default function Store() {
           <div className="flex items-center gap-2 text-sm font-semibold"><Link2 className="w-4 h-4" /> Connect Money Transfer App</div>
           <input
             value={moneyId}
-            onChange={(e) => setMoneyId(e.target.value)}
+            onChange={(e) => {
+              setMoneyId(e.target.value);
+              setMoneyConnected(false);
+            }}
             placeholder="Money app user id"
             className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
           />
           <input
             value={moneyUsername}
-            onChange={(e) => setMoneyUsername(e.target.value)}
+            onChange={(e) => {
+              setMoneyUsername(e.target.value);
+              setMoneyConnected(false);
+            }}
             placeholder="Money app username"
             className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
           />
           <button disabled={busy || !canUseStore} onClick={connectMoneyApp} className="w-full h-10 rounded-lg bg-primary/20 border border-primary/40 text-primary text-sm font-semibold">
             {busy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Connect'}
           </button>
-          <p className="text-xs text-muted-foreground">Connected: {moneyUsername || 'not connected'} {moneyBalance !== null ? `• Balance: ${moneyBalance}` : ''}</p>
+          <p className="text-xs text-muted-foreground">Connected: {moneyConnected ? (moneyUsername || 'connected') : 'not connected'} {moneyBalance !== null && moneyConnected ? `• Balance: ${moneyBalance}` : ''}</p>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
@@ -145,7 +163,7 @@ export default function Store() {
           <div className="flex items-center gap-2 text-sm font-semibold"><Wallet className="w-4 h-4" /> Buy Coins via Money Transfer</div>
           <div className="grid grid-cols-3 gap-2">
             {COIN_PACKS.map(pack => (
-              <button key={pack} disabled={busy || !canUseStore} onClick={() => handleBuyCoinPack(pack)} className="h-10 rounded-lg border border-yellow-400/40 bg-yellow-500/15 text-yellow-200 text-xs font-semibold flex items-center justify-center gap-1">
+              <button key={pack} disabled={busy || !canUseStore || !moneyConnected} onClick={() => handleBuyCoinPack(pack)} className="h-10 rounded-lg border border-yellow-400/40 bg-yellow-500/15 text-yellow-200 text-xs font-semibold flex items-center justify-center gap-1">
                 <Coins className="w-3.5 h-3.5" /> {pack}
               </button>
             ))}
