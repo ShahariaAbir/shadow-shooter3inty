@@ -5,9 +5,8 @@ export const ECONOMY_CONFIG = {
 } as const;
 
 export const BOT_GRENADE_CONFIG = {
-  throwCooldownMs: 3200,
-  throwChancePerCheck: 0.18,
-  throwCheckIntervalMs: 1100,
+  throwCooldownMs: 6200,
+  throwChancePerCheck: 0.08,
+  throwCheckIntervalMs: 1500,
   maxThrowDistance: 380,
 } as const;
-

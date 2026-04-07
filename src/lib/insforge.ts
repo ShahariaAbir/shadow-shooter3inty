@@ -112,8 +112,6 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
   const newWins = current.wins + (isWin ? 1 : 0);
   const newLosses = current.losses + (isWin ? 0 : 1);
   const earnedCoins = Math.max(0, kills * ECONOMY_CONFIG.coinsPerKill);
-  const safeGrenadesUsed = Math.max(0, Math.floor(grenadesUsed));
-
   const { error: updateError } = await insforge.database
     .from('player_stats')
     .update({
@@ -125,7 +123,6 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
       wins: newWins,
       losses: newLosses,
       coins: Math.max(0, (current.coins || 0) + earnedCoins),
-      grenades_owned: Math.max(0, (current.grenades_owned || 0) - safeGrenadesUsed),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
@@ -164,6 +161,68 @@ export async function buyGrenadeBundle(userId: string): Promise<{ ok: boolean; r
   if (updateError) {
     return { ok: false, reason: 'Purchase failed. Please try again.' };
   }
+  return { ok: true };
+}
+
+export async function consumeGrenadeOnThrow(userId: string): Promise<{ ok: boolean; reason?: string }> {
+  const { data: current, error: fetchError } = await insforge.database
+    .from('player_stats')
+    .select('grenades_owned')
+    .eq('user_id', userId)
+    .single<{ grenades_owned: number }>();
+
+  if (fetchError || !current) {
+    return { ok: false, reason: 'Could not sync grenade usage.' };
+  }
+
+  const currentCount = Math.max(0, current.grenades_owned || 0);
+  if (currentCount <= 0) {
+    return { ok: false, reason: 'No grenades left.' };
+  }
+
+  const { error: updateError } = await insforge.database
+    .from('player_stats')
+    .update({
+      grenades_owned: currentCount - 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    return { ok: false, reason: 'Failed to update grenade inventory.' };
+  }
+
+  return { ok: true };
+}
+
+export async function addCoinsToPlayer(userId: string, amount: number): Promise<{ ok: boolean; reason?: string }> {
+  const safeAmount = Math.max(0, Math.floor(amount));
+  if (safeAmount <= 0) {
+    return { ok: false, reason: 'Amount must be greater than zero.' };
+  }
+
+  const { data: current, error: fetchError } = await insforge.database
+    .from('player_stats')
+    .select('coins')
+    .eq('user_id', userId)
+    .single<{ coins: number }>();
+
+  if (fetchError || !current) {
+    return { ok: false, reason: 'Could not load player coins.' };
+  }
+
+  const { error: updateError } = await insforge.database
+    .from('player_stats')
+    .update({
+      coins: (current.coins || 0) + safeAmount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    return { ok: false, reason: 'Coin update failed.' };
+  }
+
   return { ok: true };
 }
 
