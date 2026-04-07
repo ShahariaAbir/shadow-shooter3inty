@@ -708,7 +708,7 @@ const Game = () => {
         const localProtection: number = existingState?.protectedUntil || 0;
         const mergedState = {
           ...data.state,
-          alive: existingState?.alive ?? true,
+          alive: data.state?.alive ?? existingState?.alive ?? true,
           protectedUntil: Math.max(incomingProtection, localProtection) || undefined,
         };
         remotePlayersRef.current.set(pid, mergedState);
@@ -857,6 +857,18 @@ const Game = () => {
     }
     else if (data.type === 'myName') {
       playerNamesRef.current[fromId] = data.name;
+      if (isHostRef.current) {
+        setLobbyPlayers(prev => {
+          const updated = prev.map(p => p.id === fromId ? { ...p, name: data.name } : p);
+          broadcast({
+            type: 'lobbyState',
+            players: updated,
+            mode: gameModeRef.current,
+            mapId: selectedMap,
+          });
+          return updated;
+        });
+      }
     }
     else if (data.type === 'chat') {
       const msg = {

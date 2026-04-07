@@ -128,7 +128,7 @@ export default function MatchmakingScreen({ onMatchFound, partySize = 1 }: Match
 
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center justify-center z-50"
+      className="fixed inset-0 flex flex-col items-center justify-center z-50 overflow-y-auto px-4 py-8"
       style={{ background: 'radial-gradient(ellipse at center, #0d1f15 0%, #080d16 100%)' }}
     >
       {/* Pulsing ring */}
