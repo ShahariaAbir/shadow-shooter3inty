@@ -33,10 +33,13 @@ export default function Store() {
   const canUseStore = useMemo(() => !!user, [user]);
 
   const connectMoneyApp = async () => {
-    if (!moneyId.trim()) return;
+    if (!moneyId.trim() || !moneyUsername.trim()) {
+      setMsg('Enter both money app user ID and username.');
+      return;
+    }
     setBusy(true);
     setMsg('');
-    const profile = await fetchMoneyUserProfile(moneyId.trim());
+    const profile = await fetchMoneyUserProfile(moneyId.trim(), moneyUsername.trim());
     if (!profile.ok || !profile.user) {
       setMsg(profile.reason || 'Unable to connect account.');
       setBusy(false);
@@ -53,7 +56,7 @@ export default function Store() {
 
   const refreshMoneyBalance = async () => {
     if (!moneyId) return;
-    const profile = await fetchMoneyUserProfile(moneyId);
+    const profile = await fetchMoneyUserProfile(moneyId, moneyUsername);
     if (profile.ok && profile.user) {
       setMoneyBalance(Number(profile.user.balance || 0));
     }
@@ -116,6 +119,12 @@ export default function Store() {
             value={moneyId}
             onChange={(e) => setMoneyId(e.target.value)}
             placeholder="Money app user id"
+            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
+          />
+          <input
+            value={moneyUsername}
+            onChange={(e) => setMoneyUsername(e.target.value)}
+            placeholder="Money app username"
             className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm"
           />
           <button disabled={busy || !canUseStore} onClick={connectMoneyApp} className="w-full h-10 rounded-lg bg-primary/20 border border-primary/40 text-primary text-sm font-semibold">
