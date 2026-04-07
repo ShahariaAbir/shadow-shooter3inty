@@ -11,7 +11,7 @@ const Index = () => {
   const { user, stats, hasPendingMatchmakingPenalty, loading, signInWithGoogle, signOut, updateName, refreshStats, applyMatchmakingPenalty, buyGrenadePack } = useAuth();
   const [showScanner, setShowScanner] = useState(false);
   const [showMatchmaking, setShowMatchmaking] = useState(false);
-  const [matchDetails, setMatchDetails] = useState<{mode: string, size: string} | null>(null);
+  const [matchDetails, setMatchDetails] = useState<{mode: string, size: string, partySize: number} | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const scannerRef = useRef<any>(null);
   const scannerReadyRef = useRef(false);
@@ -68,7 +68,7 @@ const Index = () => {
 
   const handleMatchFound = useCallback(() => {
     if (matchDetails) {
-      navigate(`/game?mode=matchmaking&gameMode=${matchDetails.mode}&teamSize=${matchDetails.size}`);
+      navigate(`/game?mode=matchmaking&gameMode=${matchDetails.mode}&teamSize=${matchDetails.size}&partySize=${matchDetails.partySize}`);
     }
   }, [navigate, matchDetails]);
 
@@ -96,7 +96,7 @@ const Index = () => {
   }, [user, loading, refreshStats]);
 
   if (showMatchmaking) {
-    return <MatchmakingScreen onMatchFound={handleMatchFound} />;
+    return <MatchmakingScreen onMatchFound={handleMatchFound} partySize={matchDetails?.partySize ?? 1} />;
   }
 
   return (
@@ -141,9 +141,9 @@ const Index = () => {
                 stats={stats}
                 hasPendingMatchmakingPenalty={hasPendingMatchmakingPenalty}
                 onSignOut={signOut}
-                onMatchMake={(mode, size) => {
+                onMatchMake={(mode, size, partySize) => {
                   applyMatchmakingPenalty();
-                  setMatchDetails({ mode, size });
+                  setMatchDetails({ mode, size, partySize });
                   setShowMatchmaking(true);
                 }}
                 onOfflinePlay={handleOfflinePlay}
