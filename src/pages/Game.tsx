@@ -25,6 +25,7 @@ import {
   SMG_COOLDOWN, SMG_DAMAGE, SMG_RANGE, SMG_SPEED,
   SNIPER_COOLDOWN, SNIPER_DAMAGE, SNIPER_RANGE, SNIPER_SPEED, SNIPER_BULLET_R,
   GRENADE_TRIGGER_RADIUS, GRENADE_BLAST_RADIUS, GRENADE_AUTO_BLAST_MS,
+  GRENADE_THROW_SPEED, GRENADE_MIN_ARM_MS,
 } from '@/types/game';
 import type { PlayerState, Bullet, Powerup, GlueWall, PlayerData, LobbyPlayer, GameMode, GameResult, Obstacle, WeaponType, Grenade } from '@/types/game';
 import { collidesObs, ptInObs, distToSegment, getRandomSpawn, lineIntersectsCircle } from '@/lib/gameHelpers';
@@ -80,7 +81,7 @@ function ptInObsDynamic(x: number, y: number, obstacles: Obstacle[]) {
 const Game = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, stats, hasPendingMatchmakingPenalty, submitMatchResult } = useAuth();
+  const { user, stats, hasPendingMatchmakingPenalty, submitMatchResult, consumeGrenade } = useAuth();
   const isMatchmakingMode = searchParams.get('mode') === 'matchmaking';
   const [screen, setScreen] = useState<Screen>('lobby');
   const [gameMode, setGameMode] = useState<GameMode>('ffa');
@@ -157,6 +158,7 @@ const Game = () => {
   const grenadeInventoryRef = useRef(0);
   const grenadesThrownByMeRef = useRef(0);
   const botGrenadeTickRef = useRef(0);
+  const botGrenadeLastThrowRef = useRef<Record<string, number>>({});
   const killFeedRef = useRef<KillFeedEntry[]>([]);
   const killFeedIdRef = useRef(0);
   const hitFlashRef = useRef(0);
@@ -394,6 +396,7 @@ const Game = () => {
     powerupsRef.current = [];
     glueWallsRef.current = [];
     grenadesRef.current = [];
+    botGrenadeLastThrowRef.current = {};
     blastRingsRef.current = [];
     abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
     effectsRef.current = { speed: 0, fastBullets: 0 };
@@ -550,6 +553,7 @@ const Game = () => {
     powerupsRef.current = [];
     glueWallsRef.current = [];
     grenadesRef.current = [];
+    botGrenadeLastThrowRef.current = {};
     blastRingsRef.current = [];
     abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
     effectsRef.current = { speed: 0, fastBullets: 0 };
@@ -806,6 +810,7 @@ const Game = () => {
           remotePlayersRef.current.set(p.id, { ...p.state, alive: true, protectedUntil: roundProtectedUntil } as PlayerState & { protectedUntil?: number });
       });
       bulletsRef.current = []; powerupsRef.current = []; glueWallsRef.current = []; grenadesRef.current = []; blastRingsRef.current = [];
+      botGrenadeLastThrowRef.current = {};
       abilitiesRef.current = { speed: 0, fastBullets: 0, heal: 0, glueWall: 0 };
       effectsRef.current = { speed: 0, fastBullets: 0 };
       aliveRef.current = true;
@@ -828,7 +833,7 @@ const Game = () => {
       broadcast({ type: 'wallPlaced', wall }, fromId);
     }
     else if (data.type === 'throwGrenade' && isHostRef.current) {
-      const grenade = { ...data.grenade, createdAt: Date.now(), exploded: false };
+      const grenade = { ...data.grenade, createdAt: Date.now(), armedAt: data.grenade.armedAt || Date.now() + GRENADE_MIN_ARM_MS, vx: data.grenade.vx || 0, vy: data.grenade.vy || 0, exploded: false };
       grenadesRef.current.push(grenade);
       broadcast({ type: 'grenadePlaced', grenade }, fromId);
     }
@@ -1380,10 +1385,25 @@ const Game = () => {
       return true;
     });
 
+    grenadesRef.current = grenadesRef.current.filter(grenade => {
+      if (grenade.exploded) return false;
+      grenade.x += grenade.vx;
+      grenade.y += grenade.vy;
+      grenade.vx *= 0.93;
+      grenade.vy *= 0.93;
+
+      if (grenade.x < 0 || grenade.x > ARENA_W || grenade.y < 0 || grenade.y > ARENA_H) return false;
+      if (ptInObsDynamic(grenade.x, grenade.y, obs)) {
+        grenade.vx *= -0.25;
+        grenade.vy *= -0.25;
+      }
+      return true;
+    });
+
     if (isHostRef.current) {
       grenadesRef.current.forEach(grenade => {
         if (grenade.exploded) return;
-        const timedOut = now - grenade.createdAt >= GRENADE_AUTO_BLAST_MS;
+        const timedOut = now - grenade.armedAt >= GRENADE_AUTO_BLAST_MS;
         let triggered = timedOut;
         if (!triggered) {
           for (const target of getAllLivingPlayerPositions()) {
@@ -1507,19 +1527,24 @@ const Game = () => {
           now - botGrenadeTickRef.current > BOT_GRENADE_CONFIG.throwCheckIntervalMs &&
           nearestDist < BOT_GRENADE_CONFIG.maxThrowDistance &&
           Math.random() < BOT_GRENADE_CONFIG.throwChancePerCheck &&
-          now - bot.lastFire > BOT_GRENADE_CONFIG.throwCooldownMs
+          now - (botGrenadeLastThrowRef.current[bot.id] || 0) > BOT_GRENADE_CONFIG.throwCooldownMs
         ) {
           botGrenadeTickRef.current = now;
+          const angleToEnemy = Math.atan2(nearestEnemy.y - botPlayerState.y, nearestEnemy.x - botPlayerState.x);
           const grenade: Grenade = {
             id: `g-${bot.id}-${(Math.random() * 1e9 | 0).toString(36)}`,
-            x: nearestEnemy.x,
-            y: nearestEnemy.y,
+            x: botPlayerState.x + Math.cos(angleToEnemy) * (PLAYER_R + 8),
+            y: botPlayerState.y + Math.sin(angleToEnemy) * (PLAYER_R + 8),
+            vx: Math.cos(angleToEnemy) * GRENADE_THROW_SPEED * 0.85,
+            vy: Math.sin(angleToEnemy) * GRENADE_THROW_SPEED * 0.85,
             ownerId: bot.id,
             createdAt: now,
+            armedAt: now + GRENADE_MIN_ARM_MS,
             triggerRadius: GRENADE_TRIGGER_RADIUS,
             blastRadius: GRENADE_BLAST_RADIUS,
             exploded: false,
           };
+          botGrenadeLastThrowRef.current[bot.id] = now;
           grenadesRef.current.push(grenade);
           broadcast({ type: 'grenadePlaced', grenade });
         }
@@ -1555,6 +1580,22 @@ const Game = () => {
       ctx.lineWidth = 1;
       ctx.strokeRect(o.x, o.y, o.w, o.h);
     });
+
+    const grenadeAimLength = 130;
+    const aimStartX = p.x + Math.cos(p.angle) * (PLAYER_R + 6);
+    const aimStartY = p.y + Math.sin(p.angle) * (PLAYER_R + 6);
+    const aimEndX = p.x + Math.cos(p.angle) * grenadeAimLength;
+    const aimEndY = p.y + Math.sin(p.angle) * grenadeAimLength;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,80,80,0.45)";
+    ctx.setLineDash([8, 8]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(aimStartX, aimStartY);
+    ctx.lineTo(aimEndX, aimEndY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
 
     // Glue walls
     glueWallsRef.current.forEach(w => {
@@ -1597,7 +1638,7 @@ const Game = () => {
 
     grenadesRef.current.forEach(grenade => {
       ctx.save();
-      ctx.fillStyle = 'rgba(255,68,68,0.12)';
+      ctx.fillStyle = 'rgba(255,68,68,0.08)';
       ctx.beginPath();
       ctx.arc(grenade.x, grenade.y, grenade.triggerRadius, 0, Math.PI * 2);
       ctx.fill();
@@ -1605,6 +1646,12 @@ const Game = () => {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(grenade.x, grenade.y, grenade.triggerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,130,130,0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(grenade.x, grenade.y);
+      ctx.lineTo(grenade.x - grenade.vx * 6, grenade.y - grenade.vy * 6);
       ctx.stroke();
       ctx.fillStyle = '#ff3b3b';
       ctx.beginPath();
@@ -1950,20 +1997,36 @@ const Game = () => {
     }
   }, [broadcast, sendData]);
 
-  const useGrenade = useCallback(() => {
+  const useGrenade = useCallback(async () => {
     if (!aliveRef.current) return;
     if (grenadeInventoryRef.current <= 0) return;
+
     grenadeInventoryRef.current -= 1;
     grenadesThrownByMeRef.current += 1;
     setUiGrenades(grenadeInventoryRef.current);
+
+    if (isMatchmakingMode && user) {
+      const syncResult = await consumeGrenade();
+      if (!syncResult.ok) {
+        grenadeInventoryRef.current += 1;
+        grenadesThrownByMeRef.current = Math.max(0, grenadesThrownByMeRef.current - 1);
+        setUiGrenades(grenadeInventoryRef.current);
+        return;
+      }
+    }
+
     const p = myPlayerRef.current;
-    const throwDistance = 90;
+    const throwDistance = PLAYER_R + 10;
+    const now = Date.now();
     const grenade: Grenade = {
       id: `g-${myIdRef.current}-${(Math.random() * 1e9 | 0).toString(36)}`,
       x: p.x + Math.cos(p.angle) * throwDistance,
       y: p.y + Math.sin(p.angle) * throwDistance,
+      vx: Math.cos(p.angle) * GRENADE_THROW_SPEED,
+      vy: Math.sin(p.angle) * GRENADE_THROW_SPEED,
       ownerId: myIdRef.current,
-      createdAt: Date.now(),
+      createdAt: now,
+      armedAt: now + GRENADE_MIN_ARM_MS,
       triggerRadius: GRENADE_TRIGGER_RADIUS,
       blastRadius: GRENADE_BLAST_RADIUS,
       exploded: false,
@@ -1975,7 +2038,7 @@ const Game = () => {
     } else {
       sendData({ type: 'throwGrenade', grenade });
     }
-  }, [broadcast, sendData]);
+  }, [broadcast, sendData, isMatchmakingMode, user, consumeGrenade]);
 
   // ─── PAUSE MENU HELPERS ───
 

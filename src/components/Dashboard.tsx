@@ -13,9 +13,10 @@ interface DashboardProps {
   onOfflinePlay: () => void;
   onEditName: (newName: string) => Promise<void>;
   onBuyGrenades: () => Promise<{ ok: boolean; reason?: string }>;
+  onOpenStore: () => void;
 }
 
-export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, onSignOut, onMatchMake, onOfflinePlay, onEditName, onBuyGrenades }: DashboardProps) {
+export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, onSignOut, onMatchMake, onOfflinePlay, onEditName, onBuyGrenades, onOpenStore }: DashboardProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchMode, setMatchMode] = useState<'classic' | 'tdm'>('classic');
@@ -183,6 +184,13 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
 
       {/* Action buttons */}
       <div className="flex flex-col gap-2">
+        <button
+          onClick={onOpenStore}
+          className="h-10 w-full rounded-xl font-display tracking-wider text-xs font-bold text-yellow-200 border border-yellow-400/30 hover:border-yellow-300/60 hover:text-yellow-100 transition-all flex items-center justify-center gap-2"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          OPEN STORE
+        </button>
         <button
           onClick={() => setShowMatchModal(true)}
           className="h-12 w-full rounded-xl font-display tracking-[0.25em] text-sm font-bold text-background flex items-center justify-center gap-2 transition-all active:scale-95"

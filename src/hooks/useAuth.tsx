@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { insforge, getOrCreatePlayerStats, updatePlayerStats, updatePlayerName, buyGrenadeBundle, type PlayerStats } from '@/lib/insforge';
+import { insforge, getOrCreatePlayerStats, updatePlayerStats, updatePlayerName, buyGrenadeBundle, consumeGrenadeOnThrow, addCoinsToPlayer, type PlayerStats } from '@/lib/insforge';
 
 interface AuthUser {
   id: string;
@@ -18,6 +18,8 @@ interface AuthContextValue {
   submitMatchResult: (kills: number, deaths: number, isWin: boolean, grenadesUsed?: number) => Promise<void>;
   updateName: (newName: string) => Promise<void>;
   buyGrenadePack: () => Promise<{ ok: boolean; reason?: string }>;
+  consumeGrenade: () => Promise<{ ok: boolean; reason?: string }>;
+  buyCoins: (amount: number) => Promise<{ ok: boolean; reason?: string }>;
   applyMatchmakingPenalty: () => void;
 }
 
@@ -32,6 +34,8 @@ const AuthContext = createContext<AuthContextValue>({
   submitMatchResult: async () => {},
   updateName: async () => {},
   buyGrenadePack: async () => ({ ok: false, reason: 'Not signed in' }),
+  consumeGrenade: async () => ({ ok: false, reason: 'Not signed in' }),
+  buyCoins: async () => ({ ok: false, reason: 'Not signed in' }),
   applyMatchmakingPenalty: () => {},
 });
 
@@ -132,6 +136,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result;
   }, [user, loadStats]);
 
+  const consumeGrenade = useCallback(async () => {
+    if (!user) return { ok: false, reason: 'Sign in first.' };
+    const result = await consumeGrenadeOnThrow(user.id);
+    if (result.ok) {
+      await loadStats(user.id, user.name);
+    }
+    return result;
+  }, [user, loadStats]);
+
+  const buyCoins = useCallback(async (amount: number) => {
+    if (!user) return { ok: false, reason: 'Sign in first.' };
+    const result = await addCoinsToPlayer(user.id, amount);
+    if (result.ok) {
+      await loadStats(user.id, user.name);
+    }
+    return result;
+  }, [user, loadStats]);
+
   const applyMatchmakingPenalty = useCallback(() => {
     if (!user || !stats) return;
     const currentKD = stats.total_deaths === 0 ? stats.total_kills : stats.total_kills / stats.total_deaths;
@@ -153,6 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         submitMatchResult,
         updateName,
         buyGrenadePack,
+        consumeGrenade,
+        buyCoins,
         applyMatchmakingPenalty,
       }}
     >

@@ -32,8 +32,11 @@ export interface Grenade {
   id: string;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
   ownerId: string;
   createdAt: number;
+  armedAt: number;
   triggerRadius: number;
   blastRadius: number;
   exploded?: boolean;
@@ -136,6 +139,8 @@ export const POWERUP_R = 10;
 export const GRENADE_TRIGGER_RADIUS = 80;
 export const GRENADE_BLAST_RADIUS = 110;
 export const GRENADE_AUTO_BLAST_MS = 4000;
+export const GRENADE_THROW_SPEED = 4.2;
+export const GRENADE_MIN_ARM_MS = 350;
 
 // Weapon Constants
 export const SMG_COOLDOWN = 100;

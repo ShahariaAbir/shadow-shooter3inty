@@ -149,6 +149,7 @@ const Index = () => {
                 onOfflinePlay={handleOfflinePlay}
                 onEditName={updateName}
                 onBuyGrenades={buyGrenadePack}
+                onOpenStore={() => navigate('/store')}
               />
             ) : (
               /* Guest mode */
