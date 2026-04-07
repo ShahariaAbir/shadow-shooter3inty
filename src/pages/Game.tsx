@@ -36,7 +36,7 @@ type Screen = 'lobby' | 'playing' | 'gameover';
 const POWERUP_COLORS: Record<string, string> = { speed: '#ffdd00', fastBullets: '#ff8800', heal: '#00ff44', glueWall: '#9944ff', weapon_smg: '#44ffff', weapon_sniper: '#ff44ff' };
 const POWERUP_ICONS: Record<string, string> = { speed: '⚡', fastBullets: '»', heal: '+', glueWall: ')', weapon_smg: 'S', weapon_sniper: 'N' };
 const SPAWN_PROTECTION_MS = 3000;
-const GRENADE_BUTTON_COOLDOWN_MS = 1000;
+const GRENADE_BUTTON_COOLDOWN_MS = 100;
 
 const resolveProtectionUntil = (data: { protectedFor?: number; protectedUntil?: number }) => {
   const now = Date.now();
