@@ -166,6 +166,7 @@ const Game = () => {
   const killFeedIdRef = useRef(0);
   const hitFlashRef = useRef(0);
   const spawnProtectionUntilRef = useRef(0);
+  const matchmakingAutoStartedRef = useRef(false);
 
   scrRef.current = screen;
   if (!isSoloRef.current) myIdRef.current = myId;
@@ -1098,6 +1099,7 @@ const Game = () => {
   useEffect(() => {
     if (!isMatchmakingMode) return;
     if (screen !== 'lobby') return;
+    if (searchParams.get('room')) return;
     
     const parsedGameMode = (searchParams.get('gameMode') as GameMode) || 'tdm';
     const parsedTeamSize = searchParams.get('teamSize') || 'squad';
@@ -1180,6 +1182,98 @@ const Game = () => {
     initGame(players, parsedGameMode, 'classic', botConfigs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMatchmakingMode, searchParams, user?.name, settings.username, stats, hasPendingMatchmakingPenalty, initGame, screen]);
+
+  useEffect(() => {
+    if (!isMatchmakingMode) return;
+    if (screen !== 'lobby') return;
+    if (!searchParams.get('room')) return;
+    if (!isHost || !connected || !roomCode) return;
+
+    const parsedPartySize = Math.min(4, Math.max(1, Number(searchParams.get('partySize') || '1')));
+    if (lobbyPlayers.length < parsedPartySize) return;
+    if (matchmakingAutoStartedRef.current) return;
+    matchmakingAutoStartedRef.current = true;
+
+    roundScoresRef.current = { green: 0, red: 0 };
+    setUiRoundScores({ green: 0, red: 0 });
+    deathCountsRef.current = {};
+    setDeathCounts({});
+
+    const parsedGameMode = (searchParams.get('gameMode') as GameMode) || 'tdm';
+    const parsedTeamSize = searchParams.get('teamSize') || 'squad';
+    const map = getMapById('classic');
+    activeMapRef.current = map;
+    setSelectedMap('classic');
+    const sp = map.spawnPoints;
+
+    const rawKD = stats ? (stats.total_deaths === 0 ? stats.total_kills : stats.total_kills / stats.total_deaths) : 0;
+    const effectiveKD = Math.max(rawKD - (hasPendingMatchmakingPenalty && rawKD > 0.1 ? 0.1 : 0), 0);
+    const getOpponentTierPool = (kd: number): BotTier[] => {
+      if (kd >= 4) return [4];
+      if (kd >= 3) return [3, 4];
+      if (kd >= 2) return [3, 4, 2];
+      if (kd >= 1) return [2, 3];
+      if (kd >= 0.5) return [1, 2];
+      return [1];
+    };
+    const randomTeamTier = (): BotTier => ([1, 2, 3, 4][Math.floor(Math.random() * 4)] as BotTier);
+    const opponentTierPool = getOpponentTierPool(effectiveKD);
+    const randomOpponentTier = (): BotTier => opponentTierPool[Math.floor(Math.random() * opponentTierPool.length)];
+
+    const teamTargetSize = parsedTeamSize === 'duo' && parsedPartySize <= 2 ? 2 : 4;
+    const friendlyBotCount = Math.max(0, teamTargetSize - lobbyPlayers.length);
+    const enemyBotCount = teamTargetSize;
+    const shuffledNames = [...MATCHMAKING_BOT_NAMES].sort(() => Math.random() - 0.5);
+    let nameIndex = 0;
+
+    const players: PlayerData[] = lobbyPlayers.map((lp, idx) => ({
+      id: lp.id,
+      number: idx + 1,
+      color: '#00ff88',
+      team: 'green',
+      state: { ...sp[(idx * 2) % sp.length], angle: 0, health: MAX_HEALTH, alive: true, weapon: 'default' },
+      alive: true,
+      score: 0,
+      name: lp.name,
+    }));
+
+    const botConfigs: Array<{ id: string; tier: BotTier }> = [];
+    for (let i = 0; i < friendlyBotCount; i++) {
+      const botId = `bot-f-${i + 1}`;
+      const botName = shuffledNames[nameIndex++];
+      players.push({
+        id: botId,
+        number: players.length + 1,
+        color: '#00ff88',
+        team: 'green',
+        state: { ...sp[(players.length * 2) % sp.length], angle: 0, health: MAX_HEALTH, alive: true, weapon: 'default' },
+        alive: true,
+        score: 0,
+        name: botName,
+      });
+      botConfigs.push({ id: botId, tier: randomTeamTier() });
+    }
+    for (let i = 0; i < enemyBotCount; i++) {
+      const botId = `bot-r-${i + 1}`;
+      const botName = shuffledNames[nameIndex++];
+      players.push({
+        id: botId,
+        number: players.length + 1,
+        color: '#ff4466',
+        team: 'red',
+        state: { ...sp[(1 + i * 2) % sp.length], angle: 0, health: MAX_HEALTH, alive: true, weapon: 'default' },
+        alive: true,
+        score: 0,
+        name: botName,
+      });
+      botConfigs.push({ id: botId, tier: randomOpponentTier() });
+    }
+
+    botsRef.current = botConfigs.map((bc) => createBotState(bc.id, bc.tier));
+    broadcast({ type: 'start', mode: parsedGameMode, players, mapId: 'classic' } as any);
+    initGame(players, parsedGameMode, 'classic', botConfigs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMatchmakingMode, screen, searchParams, isHost, connected, roomCode, lobbyPlayers, stats, hasPendingMatchmakingPenalty, broadcast, initGame]);
 
   // ─── UPDATE ───
 
