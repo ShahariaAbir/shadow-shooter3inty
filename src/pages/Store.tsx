@@ -148,7 +148,8 @@ export default function Store() {
           <button disabled={busy || !canUseStore} onClick={connectMoneyApp} className="w-full h-10 rounded-lg bg-primary/20 border border-primary/40 text-primary text-sm font-semibold">
             {busy ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Connect'}
           </button>
-          <p className="text-xs text-muted-foreground">Connected: {moneyConnected ? (moneyUserID || 'connected') : 'not connected'} {moneyBalance !== null && moneyConnected ? `• Balance: ${moneyBalance}` : ''}</p>
+          {/* FIX: was `moneyUserid` (undefined) — corrected to `moneyId` */}
+          <p className="text-xs text-muted-foreground">Connected: {moneyConnected ? (moneyId || 'connected') : 'not connected'} {moneyBalance !== null && moneyConnected ? `• Balance: ${moneyBalance}` : ''}</p>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
