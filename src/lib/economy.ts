@@ -8,5 +8,5 @@ export const BOT_GRENADE_CONFIG = {
   throwCooldownMs: 6200,
   throwChancePerCheck: 0.01,
   throwCheckIntervalMs: 1500,
-  maxThrowDistance: 380,
+  maxThrowDistance: 780,
 } as const;
