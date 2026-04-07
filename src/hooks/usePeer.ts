@@ -7,8 +7,11 @@ const MAX_JOIN_RETRIES = 5;
 const RETRY_DELAY_MS = 1200;
 
 const LOCAL_P2P_CONFIG: RTCConfiguration = {
-  // Disable STUN/TURN to allow local-network host candidates only.
-  iceServers: [],
+  // Use public STUN servers so peers can find each other on different networks.
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ],
 };
 
 type PeerData = unknown;
@@ -90,6 +93,9 @@ export function usePeer() {
     const code = Math.random().toString(36).substring(2, 6).toUpperCase();
 
     const p = new Peer(PREFIX + code, {
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
       config: LOCAL_P2P_CONFIG,
       reliable: true,
     });
@@ -116,6 +122,9 @@ export function usePeer() {
     const upperCode = code.trim().toUpperCase();
 
     const p = new Peer({
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
       config: LOCAL_P2P_CONFIG,
       reliable: true,
     });

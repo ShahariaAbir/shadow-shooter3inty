@@ -459,12 +459,14 @@ const Lobby = ({
               {p.id === myId ? ' (YOU)' : ''}
             </span>
             {(mode === 'tdm' || mode === 'classic') && (
-              <span
-                className={`text-[9px] font-mono px-1.5 py-0.5 rounded cursor-pointer active:scale-95 transition-transform ${p.team === 'green' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}
-                onClick={() => isHost && onTeamSwap(p.id)}
+              <button
+                type="button"
+                disabled={!isHost}
+                className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-transform ${isHost ? 'active:scale-95 cursor-pointer' : 'cursor-not-allowed opacity-70'} ${p.team === 'green' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}
+                onClick={() => onTeamSwap(p.id)}
               >
                 {p.team?.toUpperCase()}
-              </span>
+              </button>
             )}
           </div>
         ))}
