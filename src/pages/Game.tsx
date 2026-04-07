@@ -36,6 +36,7 @@ type Screen = 'lobby' | 'playing' | 'gameover';
 const POWERUP_COLORS: Record<string, string> = { speed: '#ffdd00', fastBullets: '#ff8800', heal: '#00ff44', glueWall: '#9944ff', weapon_smg: '#44ffff', weapon_sniper: '#ff44ff' };
 const POWERUP_ICONS: Record<string, string> = { speed: '⚡', fastBullets: '»', heal: '+', glueWall: ')', weapon_smg: 'S', weapon_sniper: 'N' };
 const SPAWN_PROTECTION_MS = 3000;
+const GRENADE_BUTTON_COOLDOWN_MS = 1000;
 
 const resolveProtectionUntil = (data: { protectedFor?: number; protectedUntil?: number }) => {
   const now = Date.now();
@@ -160,6 +161,7 @@ const Game = () => {
   const botGrenadeTickRef = useRef(0);
   const botGrenadeLastThrowRef = useRef<Record<string, number>>({});
   const grenadeSyncTickRef = useRef(0);
+  const grenadeLastThrowAtRef = useRef(0);
   const killFeedRef = useRef<KillFeedEntry[]>([]);
   const killFeedIdRef = useRef(0);
   const hitFlashRef = useRef(0);
@@ -414,6 +416,7 @@ const Game = () => {
     setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
     grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
     grenadesThrownByMeRef.current = 0;
+    grenadeLastThrowAtRef.current = 0;
     setUiGrenades(grenadeInventoryRef.current);
     setUiRoundBanner(null);
     setScreen('playing');
@@ -567,8 +570,7 @@ const Game = () => {
     setUiHealth(MAX_HEALTH);
     setUiAlive(true);
     setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
-    grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
-    grenadesThrownByMeRef.current = 0;
+    grenadeLastThrowAtRef.current = 0;
     setUiGrenades(grenadeInventoryRef.current);
     setUiRoundBanner(null);
     broadcast({ type: 'newRound', players, protectedUntil: roundProtectedUntil });
@@ -830,7 +832,7 @@ const Game = () => {
       aliveRef.current = true;
       setUiHealth(MAX_HEALTH); setUiAlive(true);
       setUiAbilities({ speed: 0, fastBullets: 0, heal: 0, glueWall: 0 });
-      grenadeInventoryRef.current = isMatchmakingMode ? (stats?.grenades_owned || 0) : 0;
+      grenadeLastThrowAtRef.current = 0;
       setUiGrenades(grenadeInventoryRef.current);
       setUiRoundBanner(null);
     }
@@ -2034,8 +2036,11 @@ const Game = () => {
   }, [broadcast, sendData]);
 
   const useGrenade = useCallback(() => {
+    const now = Date.now();
+    if (now - grenadeLastThrowAtRef.current < GRENADE_BUTTON_COOLDOWN_MS) return;
     if (!aliveRef.current) return;
     if (grenadeInventoryRef.current <= 0) return;
+    grenadeLastThrowAtRef.current = now;
 
     grenadeInventoryRef.current -= 1;
     grenadesThrownByMeRef.current += 1;
@@ -2043,7 +2048,6 @@ const Game = () => {
 
     const p = myPlayerRef.current;
     const throwDistance = PLAYER_R + 10;
-    const now = Date.now();
     const throwVx = Math.cos(p.angle) * GRENADE_THROW_SPEED;
     const throwVy = Math.sin(p.angle) * GRENADE_THROW_SPEED;
     const grenade: Grenade = {
