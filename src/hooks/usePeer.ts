@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
 
 const PREFIX = 'tac-arena-';
+const ROOM_CODE_LENGTH = 6;
 
 const MAX_JOIN_RETRIES = 5;
 const RETRY_DELAY_MS = 1200;
@@ -90,7 +91,7 @@ export function usePeer() {
     setError('');
     setConnected(false);
 
-    const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const code = Math.random().toString(36).substring(2, 2 + ROOM_CODE_LENGTH).toUpperCase();
 
     const p = new Peer(PREFIX + code, {
       host: '0.peerjs.com',

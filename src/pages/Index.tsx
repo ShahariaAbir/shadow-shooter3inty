@@ -37,7 +37,7 @@ const Index = () => {
           { fps: 15, qrbox: { width: 250, height: 250 } },
           (text: string) => {
             if (joinedRef.current) return;
-            const match = text.match(/[?&]room=([A-Za-z0-9]{4})/);
+            const match = text.match(/[?&]room=([A-Za-z0-9]{6})/);
             if (match) {
               joinedRef.current = true;
               scanner.stop().catch(() => { });

@@ -78,7 +78,7 @@ const Lobby = ({
           { fps: 15, qrbox: { width: 250, height: 250 } },
           (text: string) => {
             if (joinedRef.current) return;
-            const match = text.match(/[?&]room=([A-Za-z0-9]{4})/);
+            const match = text.match(/[?&]room=([A-Za-z0-9]{6})/);
             if (match) {
               joinedRef.current = true;
               scanner.stop().catch(() => { });
@@ -153,10 +153,10 @@ const Lobby = ({
               value={joinCode}
               onChange={e => setJoinCode(e.target.value.toUpperCase())}
               placeholder="CODE"
-              maxLength={4}
+              maxLength={6}
               className="text-center font-mono text-lg tracking-[0.5em] uppercase h-10 flex-1"
             />
-            <Button onClick={() => onJoinRoom(joinCode)} variant="secondary" className="h-10 px-4 font-display tracking-wider text-xs active:scale-95 transition-transform" disabled={joinCode.length < 4}>
+            <Button onClick={() => onJoinRoom(joinCode)} variant="secondary" className="h-10 px-4 font-display tracking-wider text-xs active:scale-95 transition-transform" disabled={joinCode.length < 6}>
               <Users className="w-3 h-3 mr-1" /> JOIN
             </Button>
           </div>

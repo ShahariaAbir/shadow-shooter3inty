@@ -1090,7 +1090,7 @@ const Game = () => {
   // Auto-join from QR code URL
   useEffect(() => {
     const roomParam = searchParams.get('room');
-    if (roomParam && !roomCode && roomParam.length === 4) {
+    if (roomParam && !roomCode && roomParam.length === 6) {
       handleJoinWithLoading(roomParam);
     }
   }, [searchParams, roomCode, handleJoinWithLoading]);
