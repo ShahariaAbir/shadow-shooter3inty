@@ -9,7 +9,7 @@ interface DashboardProps {
   stats: PlayerStats | null;
   hasPendingMatchmakingPenalty: boolean;
   onSignOut: () => void;
-  onMatchMake: (mode: string, size: string) => void;
+  onMatchMake: (mode: string, size: string, partySize: number) => void;
   onOfflinePlay: () => void;
   onEditName: (newName: string) => Promise<void>;
   onBuyGrenades: () => Promise<{ ok: boolean; reason?: string }>;
@@ -25,6 +25,10 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
   const [editedName, setEditedName] = useState(user.name);
   const [buyingGrenade, setBuyingGrenade] = useState(false);
   const [shopMsg, setShopMsg] = useState<string>('');
+  const [partyCode, setPartyCode] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [partyMembers, setPartyMembers] = useState<string[]>([user.name]);
+  const [partyMsg, setPartyMsg] = useState('');
 
   const rawKD = stats ? Number(computeKD(stats.total_kills, stats.total_deaths)) : 0;
   const hasPenalty = hasPendingMatchmakingPenalty && rawKD > 0.1;
@@ -56,6 +60,34 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
     setBuyingGrenade(false);
   };
 
+  const generatePartyCode = () => `${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const handleOpenMatchModal = () => {
+    setShowMatchModal(true);
+    setPartyCode(generatePartyCode());
+    setPartyMembers([user.name]);
+    setJoinCode('');
+    setPartyMsg('');
+  };
+
+  const handleJoinByCode = () => {
+    if (!/^\d{4}$/.test(joinCode.trim())) {
+      setPartyMsg('Enter a valid 4-digit code.');
+      return;
+    }
+    if (partyMembers.length >= 4) {
+      setPartyMsg('Team is already full.');
+      return;
+    }
+    const remoteName = `Remote-${joinCode.trim()}`;
+    setPartyMembers(prev => prev.includes(remoteName) ? prev : [...prev, remoteName]);
+    setPartyMsg(`Joined with code ${joinCode.trim()}.`);
+    setJoinCode('');
+  };
+
+  const isDuoLocked = partyMembers.length > 2;
+  const selectedTeamSize = isDuoLocked ? 'squad' : teamSize;
+
   return (
     <>
       {/* ── PORTRAIT layout (default) ── */}
@@ -80,7 +112,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
           handleBuyGrenades={handleBuyGrenades}
           shopMsg={shopMsg}
           onOpenStore={onOpenStore}
-          setShowMatchModal={setShowMatchModal}
+          onOpenMatchModal={handleOpenMatchModal}
           onOfflinePlay={onOfflinePlay}
         />
       </div>
@@ -168,7 +200,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
               OPEN STORE
             </button>
             <button
-              onClick={() => setShowMatchModal(true)}
+              onClick={handleOpenMatchModal}
               className="h-10 w-full rounded-lg font-display tracking-[0.2em] text-xs font-bold text-background flex items-center justify-center gap-2 transition-all active:scale-95"
               style={{
                 background: 'linear-gradient(135deg, #00ff88, #00cc6a)',
@@ -270,27 +302,61 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setTeamSize('duo')}
-                    className={`flex flex-col items-center justify-center py-3 landscape:py-2 rounded-xl border ${teamSize === 'duo' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'} transition-all`}
+                    disabled={isDuoLocked}
+                    className={`flex flex-col items-center justify-center py-3 landscape:py-2 rounded-xl border ${selectedTeamSize === 'duo' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'} transition-all disabled:opacity-40 disabled:cursor-not-allowed`}
                   >
                     <span className="font-display font-bold tracking-wider text-sm">DUO</span>
                     <span className="text-[10px] font-mono opacity-60">2 vs 2</span>
                   </button>
                   <button
                     onClick={() => setTeamSize('squad')}
-                    className={`flex flex-col items-center justify-center py-3 landscape:py-2 rounded-xl border ${teamSize === 'squad' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'} transition-all`}
+                    className={`flex flex-col items-center justify-center py-3 landscape:py-2 rounded-xl border ${selectedTeamSize === 'squad' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'} transition-all`}
                   >
                     <span className="font-display font-bold tracking-wider text-sm">SQUAD</span>
                     <span className="text-[10px] font-mono opacity-60">4 vs 4</span>
                   </button>
                 </div>
+                {isDuoLocked && (
+                  <p className="text-[10px] text-amber-300 font-mono">Duo locked: team has more than 2 players.</p>
+                )}
               </div>
+            </div>
+
+            <div className="px-5 pb-2 space-y-3">
+              <p className="text-white/60 font-mono text-xs">TEAM CODE (REMOTE PARTY)</p>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-display tracking-[0.25em] text-lg text-primary">
+                  {partyCode}
+                </div>
+                <button
+                  onClick={() => navigator.clipboard?.writeText(partyCode)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-mono text-white/80 hover:bg-white/10"
+                >
+                  COPY
+                </button>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Enter join code"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-mono text-white outline-none focus:border-primary/60"
+                />
+                <button onClick={handleJoinByCode} className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-[10px] font-mono text-primary">
+                  JOIN
+                </button>
+              </div>
+              {partyMsg && <p className="text-[10px] font-mono text-muted-foreground">{partyMsg}</p>}
+              <p className="text-[10px] font-mono text-white/70">
+                Team members: {partyMembers.length} • Remaining needed: {Math.max((selectedTeamSize === 'duo' ? 2 : 4) - partyMembers.length, 0)}
+              </p>
             </div>
 
             <div className="p-4 pt-2">
               <button
                 onClick={() => {
                   setShowMatchModal(false);
-                  onMatchMake(matchMode, teamSize);
+                  onMatchMake(matchMode, selectedTeamSize, partyMembers.length);
                 }}
                 className="w-full py-3 rounded-xl font-display font-black tracking-[0.2em] text-black"
                 style={{ background: 'linear-gradient(135deg, #00ff88, #00cc6a)' }}
@@ -309,7 +375,7 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
 function PortraitContent({
   user, isEditingName, editedName, setEditedName, setIsEditingName, handleSaveName,
   signingOut, handleSignOut, level, xp, xpProgress, kd, stats, coins, grenadesOwned,
-  buyingGrenade, handleBuyGrenades, shopMsg, onOpenStore, setShowMatchModal, onOfflinePlay,
+  buyingGrenade, handleBuyGrenades, shopMsg, onOpenStore, onOpenMatchModal, onOfflinePlay,
 }: any) {
   return (
     <>
@@ -423,7 +489,7 @@ function PortraitContent({
           OPEN STORE
         </button>
         <button
-          onClick={() => setShowMatchModal(true)}
+          onClick={onOpenMatchModal}
           className="h-12 w-full rounded-xl font-display tracking-[0.25em] text-sm font-bold text-background flex items-center justify-center gap-2 transition-all active:scale-95"
           style={{
             background: 'linear-gradient(135deg, #00ff88, #00cc6a)',

@@ -19,6 +19,7 @@ export const MATCHMAKING_BOT_NAMES = [
 
 interface MatchmakingScreenProps {
   onMatchFound: () => void;
+  partySize?: number;
 }
 
 // Play a short "player joined" ping sound using the Web Audio API
@@ -75,11 +76,16 @@ function generateRandomDelays(count: number): number[] {
   return delays;
 }
 
-export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenProps) {
-  const [playersFound, setPlayersFound] = useState(1);
+export default function MatchmakingScreen({ onMatchFound, partySize = 1 }: MatchmakingScreenProps) {
+  const [playersFound, setPlayersFound] = useState(Math.max(1, partySize));
   const [matchedNames, setMatchedNames] = useState<string[]>([]);
   const [dots, setDots] = useState('');
   const [phase, setPhase] = useState<'searching' | 'found'>('searching');
+
+  useEffect(() => {
+    setPlayersFound(Math.max(1, partySize));
+    setMatchedNames([]);
+  }, [partySize]);
 
   useEffect(() => {
     // Animate dots
@@ -89,8 +95,8 @@ export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenPro
 
     // Pick 3 random opponents from the pool
     const shuffled = [...MATCHMAKING_BOT_NAMES].sort(() => Math.random() - 0.5);
-    const targetCount = 4; // 1 (you) + 3 opponents
-    const opponents = shuffled.slice(0, targetCount - 1);
+    const targetCount = 4; // team of 4 for matchmaking list
+    const opponents = shuffled.slice(0, Math.max(0, targetCount - partySize));
 
     // Generate random 1–3 second delays for each opponent joining
     const delays = generateRandomDelays(opponents.length);
@@ -118,7 +124,7 @@ export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenPro
       addPlayerTimeouts.forEach(clearTimeout);
       clearTimeout(matchTimeout);
     };
-  }, [onMatchFound]);
+  }, [onMatchFound, partySize]);
 
   return (
     <div
@@ -163,7 +169,7 @@ export default function MatchmakingScreen({ onMatchFound }: MatchmakingScreenPro
           <div className="flex flex-col gap-1.5 w-64">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg">
               <div className="w-2 h-2 rounded-full bg-primary" />
-              <span className="text-primary font-mono text-xs font-semibold">You</span>
+              <span className="text-primary font-mono text-xs font-semibold">You {partySize > 1 ? `(Party ${partySize})` : ''}</span>
             </div>
             {matchedNames.map((name, i) => (
               <div

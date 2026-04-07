@@ -1089,6 +1089,7 @@ const Game = () => {
     
     const parsedGameMode = (searchParams.get('gameMode') as GameMode) || 'tdm';
     const parsedTeamSize = searchParams.get('teamSize') || 'squad';
+    const parsedPartySize = Math.min(4, Math.max(1, Number(searchParams.get('partySize') || '1')));
 
     const shuffledNames = [...MATCHMAKING_BOT_NAMES].sort(() => Math.random() - 0.5);
     const playerName = user?.name || settings.username || 'Player';
@@ -1107,24 +1108,15 @@ const Game = () => {
     const opponentTierPool = getOpponentTierPool(effectiveKD);
     const randomOpponentTier = (): BotTier => opponentTierPool[Math.floor(Math.random() * opponentTierPool.length)];
 
-    if (parsedTeamSize === 'duo') {
-      // User (green) + 1 Bot (green), vs 2 Bots (red)
-      teamBotConfigs.push(
-        { team: 'green', tier: randomTeamTier(), name: shuffledNames[0] }, // User's teammate
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[1] },
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[2] }
-      );
-    } else {
-      // Squad: User (green) + 3 Bots (green) vs 4 Bots (red)
-      teamBotConfigs.push(
-        { team: 'green', tier: randomTeamTier(), name: shuffledNames[0] },
-        { team: 'green', tier: randomTeamTier(), name: shuffledNames[1] },
-        { team: 'green', tier: randomTeamTier(), name: shuffledNames[2] },
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[3] },
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[4] },
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[5] },
-        { team: 'red', tier: randomOpponentTier(), name: shuffledNames[6] }
-      );
+    const teamTargetSize = parsedTeamSize === 'duo' && parsedPartySize <= 2 ? 2 : 4;
+    const friendlyBotCount = Math.max(0, teamTargetSize - parsedPartySize);
+    const enemyBotCount = teamTargetSize;
+    let nameIndex = 0;
+    for (let i = 0; i < friendlyBotCount; i++) {
+      teamBotConfigs.push({ team: 'green', tier: randomTeamTier(), name: shuffledNames[nameIndex++] });
+    }
+    for (let i = 0; i < enemyBotCount; i++) {
+      teamBotConfigs.push({ team: 'red', tier: randomOpponentTier(), name: shuffledNames[nameIndex++] });
     }
 
     isSoloRef.current = true;
