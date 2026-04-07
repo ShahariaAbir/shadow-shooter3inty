@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { insforge, getOrCreatePlayerStats, updatePlayerStats, updatePlayerName, type PlayerStats } from '@/lib/insforge';
+import { insforge, getOrCreatePlayerStats, updatePlayerStats, updatePlayerName, buyGrenadeBundle, type PlayerStats } from '@/lib/insforge';
 
 interface AuthUser {
   id: string;
@@ -15,8 +15,9 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshStats: () => Promise<void>;
-  submitMatchResult: (kills: number, deaths: number, isWin: boolean) => Promise<void>;
+  submitMatchResult: (kills: number, deaths: number, isWin: boolean, grenadesUsed?: number) => Promise<void>;
   updateName: (newName: string) => Promise<void>;
+  buyGrenadePack: () => Promise<{ ok: boolean; reason?: string }>;
   applyMatchmakingPenalty: () => void;
 }
 
@@ -30,6 +31,7 @@ const AuthContext = createContext<AuthContextValue>({
   refreshStats: async () => {},
   submitMatchResult: async () => {},
   updateName: async () => {},
+  buyGrenadePack: async () => ({ ok: false, reason: 'Not signed in' }),
   applyMatchmakingPenalty: () => {},
 });
 
@@ -102,10 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadStats(user.id, user.name);
   }, [user, loadStats]);
 
-  const submitMatchResult = useCallback(async (kills: number, deaths: number, isWin: boolean) => {
+  const submitMatchResult = useCallback(async (kills: number, deaths: number, isWin: boolean, grenadesUsed: number = 0) => {
     if (!user) return;
     try {
-      await updatePlayerStats(user.id, kills, deaths, isWin);
+      await updatePlayerStats(user.id, kills, deaths, isWin, grenadesUsed);
       await loadStats(user.id, user.name);
     } finally {
       // Always clear queued matchmaking KD penalty after a match result is submitted.
@@ -119,6 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await updatePlayerName(user.id, newName);
     setUser(prev => prev ? { ...prev, name: newName } : null);
     await loadStats(user.id, newName);
+  }, [user, loadStats]);
+
+  const buyGrenadePack = useCallback(async () => {
+    if (!user) return { ok: false, reason: 'Sign in first.' };
+    const result = await buyGrenadeBundle(user.id);
+    if (result.ok) {
+      await loadStats(user.id, user.name);
+    }
+    return result;
   }, [user, loadStats]);
 
   const applyMatchmakingPenalty = useCallback(() => {
@@ -141,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshStats,
         submitMatchResult,
         updateName,
+        buyGrenadePack,
         applyMatchmakingPenalty,
       }}
     >

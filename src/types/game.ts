@@ -28,6 +28,17 @@ export interface Bullet {
   weaponType: WeaponType;
 }
 
+export interface Grenade {
+  id: string;
+  x: number;
+  y: number;
+  ownerId: string;
+  createdAt: number;
+  triggerRadius: number;
+  blastRadius: number;
+  exploded?: boolean;
+}
+
 export type WeaponType = 'default' | 'smg' | 'sniper';
 
 export interface Powerup {
@@ -90,7 +101,10 @@ export type GameMessage =
   | { type: 'roundOver'; winner: 'green' | 'red'; roundScores: { green: number; red: number } }
   | { type: 'newRound'; players: PlayerData[] }
   | { type: 'myName'; name: string }
-  | { type: 'chat'; playerId: string; text: string; senderName: string; color: string };
+  | { type: 'chat'; playerId: string; text: string; senderName: string; color: string }
+  | { type: 'throwGrenade'; grenade: Grenade }
+  | { type: 'grenadePlaced'; grenade: Grenade }
+  | { type: 'grenadeExploded'; grenadeId: string };
 
 export interface Obstacle {
   x: number;
@@ -119,6 +133,9 @@ export const GLUE_WALL_HEALTH = 10;
 export const GLUE_WALL_WIDTH = 60;
 export const POWERUP_SPAWN_INTERVAL = 12000;
 export const POWERUP_R = 10;
+export const GRENADE_TRIGGER_RADIUS = 80;
+export const GRENADE_BLAST_RADIUS = 110;
+export const GRENADE_AUTO_BLAST_MS = 4000;
 
 // Weapon Constants
 export const SMG_COOLDOWN = 100;

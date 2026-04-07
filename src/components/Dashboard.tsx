@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Swords, TrendingUp, Star, LogOut, Play, Loader2 } from 'lucide-react';
+import { Swords, TrendingUp, Star, LogOut, Play, Loader2, Bomb, Coins, ShoppingCart } from 'lucide-react';
 import { computeKD } from '@/lib/insforge';
 import type { PlayerStats } from '@/lib/insforge';
+import { ECONOMY_CONFIG } from '@/lib/economy';
 
 interface DashboardProps {
   user: { name: string; email: string };
@@ -11,15 +12,18 @@ interface DashboardProps {
   onMatchMake: (mode: string, size: string) => void;
   onOfflinePlay: () => void;
   onEditName: (newName: string) => Promise<void>;
+  onBuyGrenades: () => Promise<{ ok: boolean; reason?: string }>;
 }
 
-export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, onSignOut, onMatchMake, onOfflinePlay, onEditName }: DashboardProps) {
+export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, onSignOut, onMatchMake, onOfflinePlay, onEditName, onBuyGrenades }: DashboardProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchMode, setMatchMode] = useState<'classic' | 'tdm'>('classic');
   const [teamSize, setTeamSize] = useState<'duo' | 'squad'>('squad');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(user.name);
+  const [buyingGrenade, setBuyingGrenade] = useState(false);
+  const [shopMsg, setShopMsg] = useState<string>('');
 
   const rawKD = stats ? Number(computeKD(stats.total_kills, stats.total_deaths)) : 0;
   const hasPenalty = hasPendingMatchmakingPenalty && rawKD > 0.1;
@@ -28,6 +32,8 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
   const xp = stats?.xp ?? 0;
   const xpForNextLevel = level * 100;
   const xpProgress = ((xp % 100) / 100) * 100;
+  const coins = stats?.coins ?? 0;
+  const grenadesOwned = stats?.grenades_owned ?? 0;
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -40,6 +46,13 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
       await onEditName(editedName.trim());
     }
     setIsEditingName(false);
+  };
+
+  const handleBuyGrenades = async () => {
+    setBuyingGrenade(true);
+    const result = await onBuyGrenades();
+    setShopMsg(result.ok ? `Purchased +${ECONOMY_CONFIG.grenadeBundleSize} grenade.` : (result.reason || 'Purchase failed'));
+    setBuyingGrenade(false);
   };
 
   return (
@@ -137,6 +150,31 @@ export default function Dashboard({ user, stats, hasPendingMatchmakingPenalty, o
           value={stats?.losses ?? 0}
           color="#ff4466"
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <StatCard icon={<Coins className="w-4 h-4" />} label="COINS" value={coins} color="#ffd166" glow />
+        <StatCard icon={<Bomb className="w-4 h-4" />} label="GRENADES" value={grenadesOwned} color="#ff4d4d" />
+      </div>
+
+      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-foreground text-xs font-semibold">Grenade Shop</p>
+            <p className="text-muted-foreground text-[10px] font-mono">
+              1 kill = {ECONOMY_CONFIG.coinsPerKill} coin • {ECONOMY_CONFIG.grenadePriceCoins} coins / grenade
+            </p>
+          </div>
+          <button
+            onClick={handleBuyGrenades}
+            disabled={buyingGrenade}
+            className="h-9 px-3 rounded-lg text-xs font-bold tracking-wide bg-red-500/15 border border-red-400/40 text-red-300 hover:bg-red-500/25 disabled:opacity-60 flex items-center gap-1.5"
+          >
+            {buyingGrenade ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-3.5 h-3.5" />}
+            BUY
+          </button>
+        </div>
+        {shopMsg && <p className="text-[10px] text-muted-foreground mt-2 font-mono">{shopMsg}</p>}
       </div>
 
       <p className="text-muted-foreground/50 font-mono text-[10px] text-center -mt-1">

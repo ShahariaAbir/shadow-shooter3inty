@@ -1,4 +1,5 @@
 import { createClient } from '@insforge/sdk';
+import { ECONOMY_CONFIG } from '@/lib/economy';
 
 export const insforge = createClient({
   baseUrl: 'https://n73p9rv8.ap-southeast.insforge.app',
@@ -16,6 +17,9 @@ export type PlayerStats = {
   matches_played: number;
   wins: number;
   losses: number;
+  coins: number;
+  grenades_owned: number;
+  total_grenade_purchases: number;
   created_at: string;
   updated_at: string;
 };
@@ -65,6 +69,9 @@ export async function getOrCreatePlayerStats(userId: string, username: string): 
     matches_played: 0,
     wins: 0,
     losses: 0,
+    coins: 0,
+    grenades_owned: 0,
+    total_grenade_purchases: 0,
   };
 
   const { data: created, error: insertError } = await insforge.database
@@ -81,7 +88,7 @@ export async function getOrCreatePlayerStats(userId: string, username: string): 
 }
 
 /** Update player stats after a match */
-export async function updatePlayerStats(userId: string, kills: number, deaths: number, isWin: boolean): Promise<void> {
+export async function updatePlayerStats(userId: string, kills: number, deaths: number, isWin: boolean, grenadesUsed: number = 0): Promise<void> {
   const { data: current, error: fetchError } = await insforge.database
     .from('player_stats')
     .select('*')
@@ -104,6 +111,8 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
   
   const newWins = current.wins + (isWin ? 1 : 0);
   const newLosses = current.losses + (isWin ? 0 : 1);
+  const earnedCoins = Math.max(0, kills * ECONOMY_CONFIG.coinsPerKill);
+  const safeGrenadesUsed = Math.max(0, Math.floor(grenadesUsed));
 
   const { error: updateError } = await insforge.database
     .from('player_stats')
@@ -115,6 +124,8 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
       matches_played: current.matches_played + 1,
       wins: newWins,
       losses: newLosses,
+      coins: Math.max(0, (current.coins || 0) + earnedCoins),
+      grenades_owned: Math.max(0, (current.grenades_owned || 0) - safeGrenadesUsed),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
@@ -122,6 +133,38 @@ export async function updatePlayerStats(userId: string, kills: number, deaths: n
   if (updateError) {
     console.error('Failed to update stats in InsForge:', updateError);
   }
+}
+
+export async function buyGrenadeBundle(userId: string): Promise<{ ok: boolean; reason?: string }> {
+  const { data: current, error: fetchError } = await insforge.database
+    .from('player_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .single<PlayerStats>();
+
+  if (fetchError || !current) {
+    return { ok: false, reason: 'Could not load your profile for purchase.' };
+  }
+
+  const price = ECONOMY_CONFIG.grenadePriceCoins;
+  if ((current.coins || 0) < price) {
+    return { ok: false, reason: `Not enough coins. Need ${price} coins.` };
+  }
+
+  const { error: updateError } = await insforge.database
+    .from('player_stats')
+    .update({
+      coins: (current.coins || 0) - price,
+      grenades_owned: (current.grenades_owned || 0) + ECONOMY_CONFIG.grenadeBundleSize,
+      total_grenade_purchases: (current.total_grenade_purchases || 0) + ECONOMY_CONFIG.grenadeBundleSize,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId);
+
+  if (updateError) {
+    return { ok: false, reason: 'Purchase failed. Please try again.' };
+  }
+  return { ok: true };
 }
 
 /** Update player name */

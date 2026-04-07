@@ -80,4 +80,9 @@ export const SFX = {
     playTone(200, 0.15, 'triangle', 0.08, 100);
     playNoise(0.1, 0.03);
   },
+  grenadeBlast: () => {
+    playTone(140, 0.2, 'sawtooth', 0.18, -90);
+    setTimeout(() => playTone(90, 0.22, 'square', 0.15, -40), 40);
+    playNoise(0.16, 0.08);
+  },
 };
