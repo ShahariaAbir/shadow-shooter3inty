@@ -107,6 +107,7 @@ export type GameMessage =
   | { type: 'chat'; playerId: string; text: string; senderName: string; color: string }
   | { type: 'throwGrenade'; grenade: Grenade }
   | { type: 'grenadePlaced'; grenade: Grenade }
+  | { type: 'grenadeSync'; grenades: Array<Pick<Grenade, 'id' | 'x' | 'y' | 'vx' | 'vy'>> }
   | { type: 'grenadeExploded'; grenadeId: string };
 
 export interface Obstacle {
@@ -139,7 +140,7 @@ export const POWERUP_R = 10;
 export const GRENADE_TRIGGER_RADIUS = 80;
 export const GRENADE_BLAST_RADIUS = 110;
 export const GRENADE_AUTO_BLAST_MS = 4000;
-export const GRENADE_THROW_SPEED = 4.2;
+export const GRENADE_THROW_SPEED = 11;
 export const GRENADE_MIN_ARM_MS = 350;
 
 // Weapon Constants

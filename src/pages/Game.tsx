@@ -159,6 +159,7 @@ const Game = () => {
   const grenadesThrownByMeRef = useRef(0);
   const botGrenadeTickRef = useRef(0);
   const botGrenadeLastThrowRef = useRef<Record<string, number>>({});
+  const grenadeSyncTickRef = useRef(0);
   const killFeedRef = useRef<KillFeedEntry[]>([]);
   const killFeedIdRef = useRef(0);
   const hitFlashRef = useRef(0);
@@ -776,7 +777,20 @@ const Game = () => {
     }
     else if (data.type === 'wallPlaced') { glueWallsRef.current.push(data.wall); }
     else if (data.type === 'wallDestroyed') { glueWallsRef.current = glueWallsRef.current.filter(w => w.id !== data.wallId); }
-    else if (data.type === 'grenadePlaced') { grenadesRef.current.push(data.grenade); }
+    else if (data.type === 'grenadePlaced') {
+      if (!grenadesRef.current.some(g => g.id === data.grenade.id)) {
+        grenadesRef.current.push(data.grenade);
+      }
+    }
+    else if (data.type === 'grenadeSync') {
+      const synced = new Map(data.grenades.map(g => [g.id, g]));
+      grenadesRef.current = grenadesRef.current
+        .map(existing => {
+          const next = synced.get(existing.id);
+          return next ? { ...existing, ...next } : existing;
+        })
+        .filter(g => synced.has(g.id));
+    }
     else if (data.type === 'grenadeExploded') { grenadesRef.current = grenadesRef.current.filter(g => g.id !== data.grenadeId); }
     else if (data.type === 'scoreUpdate') {
       scoresRef.current = data.scores; setUiScores({ ...data.scores });
@@ -834,7 +848,9 @@ const Game = () => {
     }
     else if (data.type === 'throwGrenade' && isHostRef.current) {
       const grenade = { ...data.grenade, createdAt: Date.now(), armedAt: data.grenade.armedAt || Date.now() + GRENADE_MIN_ARM_MS, vx: data.grenade.vx || 0, vy: data.grenade.vy || 0, exploded: false };
-      grenadesRef.current.push(grenade);
+      if (!grenadesRef.current.some(g => g.id === grenade.id)) {
+        grenadesRef.current.push(grenade);
+      }
       broadcast({ type: 'grenadePlaced', grenade }, fromId);
     }
     else if (data.type === 'myName') {
@@ -1385,22 +1401,17 @@ const Game = () => {
       return true;
     });
 
-    grenadesRef.current = grenadesRef.current.filter(grenade => {
-      if (grenade.exploded) return false;
-      grenade.x += grenade.vx;
-      grenade.y += grenade.vy;
-      grenade.vx *= 0.93;
-      grenade.vy *= 0.93;
-
-      if (grenade.x < 0 || grenade.x > ARENA_W || grenade.y < 0 || grenade.y > ARENA_H) return false;
-      if (ptInObsDynamic(grenade.x, grenade.y, obs)) {
-        grenade.vx *= -0.25;
-        grenade.vy *= -0.25;
-      }
-      return true;
-    });
-
     if (isHostRef.current) {
+      grenadesRef.current = grenadesRef.current.filter(grenade => {
+        if (grenade.exploded) return false;
+        grenade.x += grenade.vx;
+        grenade.y += grenade.vy;
+
+        if (grenade.x < 0 || grenade.x > ARENA_W || grenade.y < 0 || grenade.y > ARENA_H) return false;
+        if (ptInObsDynamic(grenade.x, grenade.y, obs)) return false;
+        return true;
+      });
+
       grenadesRef.current.forEach(grenade => {
         if (grenade.exploded) return;
         const timedOut = now - grenade.armedAt >= GRENADE_AUTO_BLAST_MS;
@@ -1417,6 +1428,20 @@ const Game = () => {
         }
         if (triggered) explodeGrenade(grenade);
       });
+
+      if (!isSoloRef.current && now - grenadeSyncTickRef.current > 50) {
+        grenadeSyncTickRef.current = now;
+        broadcast({
+          type: 'grenadeSync',
+          grenades: grenadesRef.current.map(grenade => ({
+            id: grenade.id,
+            x: grenade.x,
+            y: grenade.y,
+            vx: grenade.vx,
+            vy: grenade.vy,
+          })),
+        });
+      }
     }
 
     blastRingsRef.current = blastRingsRef.current.filter(br => now - br.createdAt < 450);
@@ -2018,12 +2043,14 @@ const Game = () => {
     const p = myPlayerRef.current;
     const throwDistance = PLAYER_R + 10;
     const now = Date.now();
+    const throwVx = Math.cos(p.angle) * GRENADE_THROW_SPEED;
+    const throwVy = Math.sin(p.angle) * GRENADE_THROW_SPEED;
     const grenade: Grenade = {
       id: `g-${myIdRef.current}-${(Math.random() * 1e9 | 0).toString(36)}`,
       x: p.x + Math.cos(p.angle) * throwDistance,
       y: p.y + Math.sin(p.angle) * throwDistance,
-      vx: Math.cos(p.angle) * GRENADE_THROW_SPEED,
-      vy: Math.sin(p.angle) * GRENADE_THROW_SPEED,
+      vx: throwVx,
+      vy: throwVy,
       ownerId: myIdRef.current,
       createdAt: now,
       armedAt: now + GRENADE_MIN_ARM_MS,
@@ -2035,6 +2062,7 @@ const Game = () => {
     if (isHostRef.current) {
       grenadesRef.current.push(grenade);
       broadcast({ type: 'grenadePlaced', grenade });
+      broadcast({ type: 'grenadeSync', grenades: [{ id: grenade.id, x: grenade.x, y: grenade.y, vx: grenade.vx, vy: grenade.vy }] });
     } else {
       sendData({ type: 'throwGrenade', grenade });
     }

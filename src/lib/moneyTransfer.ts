@@ -10,12 +10,16 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-export async function fetchMoneyUserProfile(userId: string): Promise<{ ok: boolean; user?: MoneyUser; reason?: string }> {
+export async function fetchMoneyUserProfile(userId: string, expectedUsername?: string): Promise<{ ok: boolean; user?: MoneyUser; reason?: string }> {
   const res = await fetch(`${MT_BASE}/users?id=eq.${encodeURIComponent(userId)}&select=id,username,balance`, { headers });
   if (!res.ok) return { ok: false, reason: 'Unable to fetch money app profile.' };
   const rows = await res.json() as MoneyUser[];
   if (!rows?.length) return { ok: false, reason: 'Money app account not found.' };
-  return { ok: true, user: rows[0] };
+  const user = rows[0];
+  if (expectedUsername && user.username.toLowerCase() !== expectedUsername.trim().toLowerCase()) {
+    return { ok: false, reason: 'Money app username does not match this user ID.' };
+  }
+  return { ok: true, user };
 }
 
 export async function transferToShadowShooter(senderId: string, amount: number): Promise<{ ok: boolean; reason?: string }> {
