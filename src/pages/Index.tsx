@@ -1,18 +1,36 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Camera, X, Loader2 } from 'lucide-react';
+import { Camera, X, Loader2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Dashboard from '@/components/Dashboard';
 import MatchmakingScreen from '@/components/MatchmakingScreen';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, stats, hasPendingMatchmakingPenalty, loading, signInWithGoogle, signOut, updateName, refreshStats, applyMatchmakingPenalty, buyGrenadePack } = useAuth();
+  const {
+    user,
+    stats,
+    hasPendingMatchmakingPenalty,
+    loading,
+    signInWithGoogle,
+    signInWithPassword,
+    securityAlerts,
+    dismissSecurityAlert,
+    signOut,
+    updateName,
+    refreshStats,
+    applyMatchmakingPenalty,
+    buyGrenadePack,
+  } = useAuth();
   const [showScanner, setShowScanner] = useState(false);
   const [showMatchmaking, setShowMatchmaking] = useState(false);
   const [matchDetails, setMatchDetails] = useState<{mode: string, size: string, partySize: number, partyCode?: string} | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [passwordSigningIn, setPasswordSigningIn] = useState(false);
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   const scannerRef = useRef<any>(null);
   const scannerReadyRef = useRef(false);
   const joinedRef = useRef(false);
@@ -66,6 +84,19 @@ const Index = () => {
     setSigningIn(false);
   };
 
+  const handlePasswordSignIn = async () => {
+    setPasswordSigningIn(true);
+    setLoginError('');
+    const result = await signInWithPassword(loginIdentifier, loginPassword);
+    if (!result.ok) {
+      setLoginError(result.reason || 'Sign-in failed.');
+    } else {
+      setLoginIdentifier('');
+      setLoginPassword('');
+    }
+    setPasswordSigningIn(false);
+  };
+
   const handleMatchFound = useCallback(() => {
     if (matchDetails) {
       const params = new URLSearchParams({
@@ -108,6 +139,36 @@ const Index = () => {
 
   return (
     <div className="flex flex-col items-center justify-center bg-background p-6" style={{ height: '100dvh' }}>
+      {user && securityAlerts.length > 0 && (
+        <div className="fixed top-3 right-3 z-50 w-[300px] max-w-[90vw] space-y-2">
+          {securityAlerts.map((event) => (
+            <div key={event.id} className="rounded-xl border border-destructive/40 bg-card p-3 shadow-2xl">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-destructive">
+                  <ShieldAlert className="h-4 w-4" /> Suspicious login attempt
+                </div>
+                <button onClick={() => dismissSecurityAlert(event.id)} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {event.image_data_url ? (
+                <img src={event.image_data_url} alt="Captured attempt" className="mb-2 h-28 w-full rounded-md object-cover" />
+              ) : (
+                <div className="mb-2 rounded-md bg-muted p-2 text-[10px] text-muted-foreground">No camera image captured.</div>
+              )}
+              <div className="space-y-1 text-[10px] leading-relaxed text-muted-foreground">
+                <div><span className="text-foreground">Identifier:</span> {event.attempted_identifier || 'Unknown'}</div>
+                <div><span className="text-foreground">IP:</span> {event.ip_address || 'Unknown'}</div>
+                <div><span className="text-foreground">Location:</span> {event.estimated_location || 'Unknown'}</div>
+                {event.maps_link && (
+                  <a href={event.maps_link} target="_blank" rel="noreferrer" className="text-primary underline">Open estimated location in Google Maps</a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="text-center w-full max-w-xs space-y-5">
         <img src="/icon-512.png" alt="Shadow Shooter" className="w-20 h-20 mx-auto rounded-2xl shadow-lg shadow-primary/30" />
         <div className="space-y-0.5">
@@ -142,7 +203,6 @@ const Index = () => {
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
             ) : user ? (
-              /* Logged-in dashboard */
               <Dashboard
                 user={user}
                 stats={stats}
@@ -159,9 +219,31 @@ const Index = () => {
                 onOpenStore={() => navigate('/store')}
               />
             ) : (
-              /* Guest mode */
               <div className="flex flex-col gap-2.5">
-                {/* Google Sign-In */}
+                <input
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  placeholder="Email"
+                  type="email"
+                  autoComplete="email"
+                  className="h-11 rounded-xl border border-white/15 bg-white/5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                />
+                <input
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="h-11 rounded-xl border border-white/15 bg-white/5 px-3 text-sm outline-none focus:ring-2 focus:ring-primary"
+                />
+                <Button onClick={handlePasswordSignIn} disabled={passwordSigningIn} className="h-11 text-sm font-semibold">
+                  {passwordSigningIn ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in with Email'}
+                </Button>
+
+                {loginError && (
+                  <p className="text-xs text-destructive">{loginError}</p>
+                )}
+
                 <button
                   onClick={handleGoogleSignIn}
                   disabled={signingIn}
@@ -182,7 +264,6 @@ const Index = () => {
                   Continue with Google
                 </button>
 
-                {/* Offline Play */}
                 <Button onClick={() => navigate('/game')} className="h-12 text-base font-display tracking-[0.3em]" size="lg">
                   PLAY OFFLINE
                 </Button>
