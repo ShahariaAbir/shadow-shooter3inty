@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { insforge, getOrCreatePlayerStats, updatePlayerStats, updatePlayerName, buyGrenadeBundle, consumeGrenadeOnThrow, addCoinsToPlayer, type PlayerStats } from '@/lib/insforge';
+import { createFailedLoginEvent, dismissSecurityEventForUser, listSecurityEventsForUser, markSecurityEventsViewed, type LoginSecurityEvent } from '@/lib/securityAlerts';
 
 interface AuthUser {
   id: string;
@@ -13,6 +14,9 @@ interface AuthContextValue {
   hasPendingMatchmakingPenalty: boolean;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithPassword: (identifier: string, password: string) => Promise<{ ok: boolean; reason?: string }>;
+  securityAlerts: LoginSecurityEvent[];
+  dismissSecurityAlert: (eventId: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshStats: () => Promise<void>;
   submitMatchResult: (kills: number, deaths: number, isWin: boolean, grenadesUsed?: number) => Promise<void>;
@@ -29,6 +33,9 @@ const AuthContext = createContext<AuthContextValue>({
   hasPendingMatchmakingPenalty: false,
   loading: true,
   signInWithGoogle: async () => {},
+  signInWithPassword: async () => ({ ok: false, reason: 'Not ready' }),
+  securityAlerts: [],
+  dismissSecurityAlert: async () => {},
   signOut: async () => {},
   refreshStats: async () => {},
   submitMatchResult: async () => {},
@@ -46,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [hasPendingMatchmakingPenalty, setHasPendingMatchmakingPenalty] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [securityAlerts, setSecurityAlerts] = useState<LoginSecurityEvent[]>([]);
 
   const loadStats = useCallback(async (userId: string, username: string) => {
     const s = await getOrCreatePlayerStats(userId, username);
@@ -65,6 +73,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem(`${MATCHMAKING_PENALTY_STORAGE_KEY}:${userId}`) === '1';
   }, []);
 
+  const refreshSecurityAlerts = useCallback(async (userId: string) => {
+    const events = await listSecurityEventsForUser(userId);
+    setSecurityAlerts(events);
+
+    const unseenIds = events
+      .filter((event) => event.status === 'new')
+      .map((event) => event.id);
+
+    if (unseenIds.length) {
+      await markSecurityEventsViewed(userId, unseenIds);
+      setSecurityAlerts((current) => current.map((event) => unseenIds.includes(event.id) ? { ...event, status: 'viewed' } : event));
+    }
+  }, []);
+
   // Check current auth state on mount
   useEffect(() => {
     (async () => {
@@ -80,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const resolvedName = loadedStats?.username?.trim() || u.name;
           setUser({ ...u, name: resolvedName });
           setHasPendingMatchmakingPenalty(getPenaltyStorage(u.id));
+          await refreshSecurityAlerts(u.id);
         }
       } catch {
         // Not logged in, that's fine
@@ -87,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     })();
-  }, [loadStats, getPenaltyStorage]);
+  }, [loadStats, getPenaltyStorage, refreshSecurityAlerts]);
 
   const signInWithGoogle = useCallback(async () => {
     await insforge.auth.signInWithOAuth({
@@ -96,11 +119,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+
+  const signInWithPassword = useCallback(async (identifier: string, password: string): Promise<{ ok: boolean; reason?: string }> => {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
+    if (!normalizedIdentifier || !password.trim()) {
+      return { ok: false, reason: 'Enter your email and password.' };
+    }
+
+    const { data: maybeExistingByName } = await insforge.database
+      .from('player_stats')
+      .select('user_id, username')
+      .eq('username', normalizedIdentifier)
+      .limit(1);
+
+    const { data: maybeExistingById } = await insforge.database
+      .from('player_stats')
+      .select('user_id')
+      .eq('user_id', normalizedIdentifier)
+      .limit(1);
+
+    const targetUserId = (maybeExistingByName?.[0] as { user_id: string } | undefined)?.user_id
+      ?? (maybeExistingById?.[0] as { user_id: string } | undefined)?.user_id
+      ?? null;
+
+    const authClient = (insforge.auth as unknown as {
+      signInWithPassword?: (args: { email: string; password: string }) => Promise<{ data?: { user?: { id: string; email: string; profile?: { name?: string } } }; error?: { message?: string } }>;
+    });
+
+    if (!authClient.signInWithPassword) {
+      return { ok: false, reason: 'Password sign-in is not enabled in this SDK build.' };
+    }
+
+    const { data, error } = await authClient.signInWithPassword({
+      email: normalizedIdentifier,
+      password,
+    });
+
+    if (error || !data?.user) {
+      if (targetUserId) {
+        await createFailedLoginEvent(targetUserId, normalizedIdentifier);
+      }
+      return { ok: false, reason: error?.message || 'Invalid credentials.' };
+    }
+
+    const signedInUser: AuthUser = {
+      id: data.user.id,
+      email: data.user.email,
+      name: data.user.profile?.name || data.user.email.split('@')[0],
+    };
+
+    const loadedStats = await loadStats(signedInUser.id, signedInUser.name);
+    const resolvedName = loadedStats?.username?.trim() || signedInUser.name;
+    setUser({ ...signedInUser, name: resolvedName });
+    setHasPendingMatchmakingPenalty(getPenaltyStorage(signedInUser.id));
+    await refreshSecurityAlerts(signedInUser.id);
+
+    return { ok: true };
+  }, [loadStats, getPenaltyStorage, refreshSecurityAlerts]);
+
   const signOut = useCallback(async () => {
     await insforge.auth.signOut();
     setUser(null);
     setStats(null);
     setHasPendingMatchmakingPenalty(false);
+    setSecurityAlerts([]);
   }, []);
 
   const refreshStats = useCallback(async () => {
@@ -154,6 +236,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return result;
   }, [user, loadStats]);
 
+
+  const dismissSecurityAlert = useCallback(async (eventId: string) => {
+    if (!user) return;
+    await dismissSecurityEventForUser(user.id, eventId);
+    setSecurityAlerts((current) => current.filter((event) => event.id !== eventId));
+  }, [user]);
+
   const applyMatchmakingPenalty = useCallback(() => {
     if (!user || !stats) return;
     const currentKD = stats.total_deaths === 0 ? stats.total_kills : stats.total_kills / stats.total_deaths;
@@ -170,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasPendingMatchmakingPenalty,
         loading,
         signInWithGoogle,
+        signInWithPassword,
         signOut,
         refreshStats,
         submitMatchResult,
@@ -177,6 +267,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         buyGrenadePack,
         consumeGrenade,
         buyCoins,
+        securityAlerts,
+        dismissSecurityAlert,
         applyMatchmakingPenalty,
       }}
     >
